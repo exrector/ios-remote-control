@@ -23,7 +23,11 @@ ROTATIONS = {"rot0": 0, "rot90": 90, "rot180": 180, "rot270": 270}
 UNLAUNCHABLE_BUNDLES = {"com.apple.springboard"}
 # Centers of the passcode keys in portrait screenshots: columns, then rows. Measured on each device.
 KEYPADS = {(1290, 2796): ((309, 645, 981), (1113, 1437, 1761, 2085))}
-PASSCODE_LENGTHS = (4, 6)
+# Codes of these lengths submit themselves. Others need the OK button that appears after the first digit.
+AUTO_SUBMIT_LENGTHS = (4, 6)
+PASSCODE_MIN_LENGTH = 4
+PASSCODE_MAX_LENGTH = 16
+OK_BUTTONS = {(1290, 2796): (978, 716)}
 # How much brighter a key's disc must be than the screen around it.
 KEY_MIN_CONTRAST = 10
 KEY_INNER_RADIUS = 0.42
@@ -98,8 +102,15 @@ def keypad_point(digit: str, width: int, height: int) -> tuple[int, int]:
 
 def validate_passcode(passcode: str) -> None:
     """Raise ValueError unless this is a passcode the keypad can enter. The message never contains it."""
-    if not passcode.isascii() or not passcode.isdigit() or len(passcode) not in PASSCODE_LENGTHS:
-        raise ValueError("only 4-digit and 6-digit numeric passcodes are supported; nothing was sent to the device")
+    if (
+        not passcode.isascii()
+        or not passcode.isdigit()
+        or not PASSCODE_MIN_LENGTH <= len(passcode) <= PASSCODE_MAX_LENGTH
+    ):
+        raise ValueError(
+            f"only numeric passcodes of {PASSCODE_MIN_LENGTH} to {PASSCODE_MAX_LENGTH} digits are supported; "
+            "nothing was sent to the device"
+        )
 
 
 def _ring_brightness(pixels: Any, x: int, y: int, radius: float, width: int, height: int) -> float:
@@ -331,6 +342,8 @@ class RemoteDevice:
                     x, y = keypad_point(digit, width, height)
                     await hid.multi_tap([screen_to_hid(x, y, width, height, 0)], hold=0.05)
                     await asyncio.sleep(UNLOCK_KEY_GAP_SECONDS)
+                if len(passcode) not in AUTO_SUBMIT_LENGTHS:
+                    await hid.multi_tap([screen_to_hid(*OK_BUTTONS[(width, height)], width, height, 0)], hold=0.05)
             await asyncio.sleep(UNLOCK_SETTLE_SECONDS)
             if await rsd.get_value(key="PasswordProtected"):
                 raise ValueError("the device is still locked after one attempt; not retrying, check it before trying again")

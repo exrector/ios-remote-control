@@ -167,13 +167,13 @@ There is deliberately no passcode argument. The command works only at a real ter
 It refuses, without entering any digits, when:
 
 - there is no terminal, such as when run by an agent's shell;
-- the passcode is not 4 or 6 digits;
+- the passcode is not numeric, or is not 4 to 16 digits long;
 - the screen size has no measured keypad, or the device is not in portrait;
 - a check of the screenshot does not find the keypad.
 
 If the device is still locked after the attempt, the command reports an error and does not retry, because repeated wrong passcodes disable the device. Do not run it again without asking the user.
 
-Keypad layouts are measured per screen. Only 1290×2796 (iPhone 15 Pro Max) is included so far.
+Codes of 4 or 6 digits submit themselves, and other lengths press the OK button after the last digit. The keys stop appearing in screenshots once typing starts, but they still work. Keypad layouts are measured per screen. Only 1290×2796 (iPhone 15 Pro Max) is included so far.
 
 ## On a locked device
 

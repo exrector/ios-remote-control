@@ -334,13 +334,13 @@ class UnlockTests(unittest.TestCase):
         self.assertFalse(keypad_visible(self.screen(keys=False)))
 
     def test_passcode_errors_do_not_reveal_it(self):
-        for bad in ("12345", "abcd", "١٢٣٤", ""):
+        for bad in ("123", "12345678901234567", "abcd", "١٢٣٤", ""):
             with self.assertRaises(ValueError) as caught:
                 validate_passcode(bad)
             if bad:
                 self.assertNotIn(bad, str(caught.exception))
-        validate_passcode("1234")
-        validate_passcode("123456")
+        for good in ("1234", "123456", "12345678"):
+            validate_passcode(good)
 
     def run_cli(self, tty=False):
         output = io.StringIO()
