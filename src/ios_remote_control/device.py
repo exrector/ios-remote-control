@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import math
 import struct
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -26,8 +28,12 @@ AUTO_SUBMIT_LENGTHS = (4, 6)
 PASSCODE_MIN_LENGTH = 4
 PASSCODE_MAX_LENGTH = 16
 OK_BUTTONS = {(1290, 2796): (978, 716)}
-UNLOCK_WAKE_SECONDS = 1
-UNLOCK_KEYPAD_SECONDS = 0.5
+# How much brighter a key's disc must be than the screen around it.
+KEY_MIN_CONTRAST = 10
+KEY_INNER_RADIUS = 0.42
+KEY_OUTER_RADIUS = 0.6
+KEY_WIDTH = 250
+UNLOCK_SHOW_ATTEMPTS = 4
 BACKLIGHT_ON = "activeOn"
 UNLOCK_SETTLE_SECONDS = 2
 UNLOCK_KEY_GAP_SECONDS = 0.25
@@ -106,6 +112,36 @@ def validate_passcode(passcode: str) -> None:
             f"only numeric passcodes of {PASSCODE_MIN_LENGTH} to {PASSCODE_MAX_LENGTH} digits are supported; "
             "nothing was sent to the device"
         )
+
+
+def _ring_brightness(pixels: Any, x: int, y: int, radius: float, width: int, height: int) -> float:
+    """Return the mean brightness on a circle around a point, staying inside the image."""
+    total = 0
+    for step in range(36):
+        angle = step * math.pi / 18
+        total += pixels[
+            min(width - 1, max(0, int(x + radius * math.cos(angle)))),
+            min(height - 1, max(0, int(y + radius * math.sin(angle)))),
+        ]
+    return total / 36
+
+
+def keypad_visible(png: bytes) -> bool:
+    """Return whether a screenshot shows the passcode keypad: every key a disc brighter than its surroundings."""
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(png)).convert("L")
+    width, height = image.size
+    if (width, height) not in KEYPADS:
+        return False
+    pixels = image.load()
+    for digit in "0123456789":
+        x, y = keypad_point(digit, width, height)
+        inner = _ring_brightness(pixels, x, y, KEY_WIDTH * KEY_INNER_RADIUS, width, height)
+        outer = _ring_brightness(pixels, x, y, KEY_WIDTH * KEY_OUTER_RADIUS, width, height)
+        if inner - outer < KEY_MIN_CONTRAST:
+            return False
+    return True
 
 
 class RemoteDevice:
@@ -259,22 +295,39 @@ class RemoteDevice:
             await asyncio.sleep(0.05)
             await buttons.send_button(*HOME_BUTTON, HID_BUTTON_STATE_UP)
 
-    async def _show_keypad(self, rsd: Any, hid: Any, width: int, height: int) -> None:
-        """Wake a dark screen and swipe up once. The keypad fades quickly, so typing must follow at once."""
+    async def _capture(self, rsd: Any) -> bytes:
+        """Capture the screen as PNG data on an open connection."""
+        from pymobiledevice3.remote.core_device.screen_capture_service import ScreenCaptureService
+
+        async with ScreenCaptureService(rsd) as capture:
+            return (await capture.capture_screenshot())["image"]
+
+    async def _show_keypad(self, rsd: Any, width: int, height: int) -> None:
+        """Bring up the passcode keypad, or raise ValueError so that no digit is ever typed elsewhere."""
+        from pymobiledevice3.remote.core_device.hid_service import UniversalHIDServiceService
+
         from pymobiledevice3.remote.core_device.device_info import DeviceInfoService
 
-        async with DeviceInfoService(rsd) as info:
-            screen_on = (await info.get_display_info()).get("backlightState") == BACKLIGHT_ON
-        if not screen_on:
-            await self._press_home(rsd)
-            await asyncio.sleep(UNLOCK_WAKE_SECONDS)
         start = screen_to_hid(width / 2, height * 0.97, width, height, 0)
         end = screen_to_hid(width / 2, height * 0.45, width, height, 0)
-        await hid.multi_drag([(*start, *end)], duration=0.3, steps=12)
-        await asyncio.sleep(UNLOCK_KEYPAD_SECONDS)
+        if keypad_visible(await self._capture(rsd)):
+            return
+        for _ in range(UNLOCK_SHOW_ATTEMPTS):
+            async with DeviceInfoService(rsd) as info:
+                screen_on = (await info.get_display_info()).get("backlightState") == BACKLIGHT_ON
+            if screen_on:
+                async with UniversalHIDServiceService(rsd) as hid:
+                    await hid.multi_drag([(*start, *end)], duration=0.3, steps=12)
+            else:
+                # Home wakes a dark screen, but pressing it on a lit one can turn the screen off.
+                await self._press_home(rsd)
+            await asyncio.sleep(UNLOCK_SETTLE_SECONDS)
+            if keypad_visible(await self._capture(rsd)):
+                return
+        raise ValueError("the passcode keypad did not appear, so no digits were entered")
 
     async def unlock(self, passcode: str) -> str:
-        """Bring up the keypad and enter a passcode once. Return `unlocked` or `already_unlocked`.
+        """Enter a passcode once, only on a confirmed keypad. Return `unlocked` or `already_unlocked`.
 
         It never retries, because repeated failures make iOS disable the device.
         """
@@ -288,8 +341,8 @@ class RemoteDevice:
             if rotation != 0:
                 raise ValueError("the passcode keypad is only supported in portrait; no digits were entered")
             keypad_point("0", width, height)
+            await self._show_keypad(rsd, width, height)
             async with UniversalHIDServiceService(rsd) as hid:
-                await self._show_keypad(rsd, hid, width, height)
                 for digit in passcode:
                     x, y = keypad_point(digit, width, height)
                     await hid.multi_tap([screen_to_hid(x, y, width, height, 0)], hold=0.05)

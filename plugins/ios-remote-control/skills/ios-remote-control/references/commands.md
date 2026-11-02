@@ -164,17 +164,16 @@ There is deliberately no passcode argument. The command works only at a real ter
 | `unlocked` | The device reports that it is unlocked. |
 | `already_unlocked` | It was not locked, so nothing was typed. |
 
-It wakes a dark screen with Home, swipes up once from the bottom edge, waits briefly, and types at once, because the keypad fades quickly. It does not check the screen first.
-
 It refuses, without entering any digits, when:
 
 - there is no terminal, such as when run by an agent's shell;
 - the passcode is not numeric, or is not 4 to 16 digits long;
-- the screen size has no measured keypad, or the device is not in portrait.
+- the screen size has no measured keypad, or the device is not in portrait;
+- a check of the screenshot does not find the keypad.
 
 If the device is still locked after the attempt, the command reports an error and does not retry, because repeated wrong passcodes disable the device. Do not run it again without asking the user.
 
-Codes of 4 or 6 digits submit themselves, and other lengths press the OK button after the last digit. The keys stop appearing in screenshots once typing starts, but they still work, so a screenshot cannot confirm them. Tested with an 8-digit code on an iPhone with iOS 27.2, over Wi-Fi and a direct Tailscale path, but not yet over a relayed one. Keypad layouts are measured per screen. Only 1290×2796 (iPhone 15 Pro Max) is included so far.
+Codes of 4 or 6 digits submit themselves, and other lengths press the OK button after the last digit. The keys stop appearing in screenshots once typing starts, but they still work. Tested with an 8-digit code on an iPhone with iOS 27.2, over Wi-Fi and a direct Tailscale path, but not yet over a relayed one. Keypad layouts are measured per screen. Only 1290×2796 (iPhone 15 Pro Max) is included so far.
 
 ## On a locked device
 
