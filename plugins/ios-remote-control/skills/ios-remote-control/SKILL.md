@@ -7,6 +7,11 @@ description: Inspect and operate a paired physical iPhone or iPad over a directl
 
 Use the `ios-remote` CLI. It connects directly to a previously paired device and creates its own rootless userspace tunnel.
 
+Read these when you need them:
+
+- [references/commands.md](references/commands.md): every command, argument, output field, and error.
+- [references/devices.md](references/devices.md): which Apple devices and systems are supported, how each one pairs by cable or wirelessly, and what breaks a pairing. Read this before any pairing work.
+
 ## Install the CLI
 
 Check for the command first:
@@ -31,7 +36,7 @@ Start with `ios-remote list`, then check the selected alias with:
 ios-remote doctor --device ALIAS
 ```
 
-**The device must already be paired with the user's Mac.** This tool cannot create the first pairing, and neither can you: do not try. Check this first, in Xcode or Device Hub, and if it is not paired, ask the user to pair it. On iPadOS 17.7 that means a cable. Never remove a device from Xcode or Device Hub: it deletes the trust this tool depends on.
+**The device must already be paired with the user's Mac.** This tool cannot create the first pairing, and neither can you: do not try. Check this first, in Xcode or Device Hub. If it is not paired, tell the user how from [references/devices.md](references/devices.md). iPhones and iPads on iOS 26 or earlier need a cable. Never remove a device from Xcode or Device Hub: it deletes the trust this tool depends on.
 
 Developer Mode is necessary but does not establish trust. If the paired device has no RemotePairing record, connect it by cable or put the computer and device on the same Wi-Fi, then run:
 

@@ -1,3 +1,5 @@
+"""Connect to a paired device over its routable address and operate it through CoreDevice."""
+
 from __future__ import annotations
 
 import asyncio
@@ -20,16 +22,18 @@ UNLAUNCHABLE_BUNDLES = {"com.apple.springboard"}
 
 
 class PairingRequiredError(RuntimeError):
-    pass
+    """The device has no usable RemotePairing record on this computer."""
 
 
 def png_dimensions(data: bytes) -> tuple[int, int]:
+    """Read width and height from PNG data, or raise ValueError if it is not a PNG."""
     if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
         raise ValueError("screen capture did not return a valid PNG")
     return struct.unpack(">II", data[16:24])
 
 
 def pixel_to_hid(value: float, extent: int) -> int:
+    """Scale a pixel position to the 0..65535 HID range, or raise ValueError if it is off screen."""
     if extent <= 1:
         raise ValueError("screen extent must be greater than one pixel")
     if value < 0 or value > extent - 1:
@@ -67,11 +71,15 @@ def screen_to_hid(x: float, y: float, width: int, height: int, rotation: int) ->
 
 
 class RemoteDevice:
+    """Operations on one saved device. Each one opens its own tunnel and closes it afterwards."""
+
     def __init__(self, device: Device):
+        """Remember the saved device to operate on."""
         self.device = device
 
     @asynccontextmanager
     async def rsd(self) -> AsyncIterator[Any]:
+        """Open a rootless userspace tunnel to the device and yield its service connection."""
         from pymobiledevice3.remote import remote_service_discovery, remotexpc, tunnel_service, userspace_tunnel
         from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
         from pymobiledevice3.remote.tunnel_service import RemotePairingManualPairingService
@@ -139,6 +147,7 @@ class RemoteDevice:
             await service.close()
 
     async def info(self) -> dict[str, Any]:
+        """Return device model, OS, orientation, rotation, backlight, and passcode state."""
         from pymobiledevice3.remote.core_device.device_info import DeviceInfoService
 
         async with self.rsd() as rsd:
@@ -159,6 +168,7 @@ class RemoteDevice:
             }
 
     async def screenshot_bytes(self) -> bytes:
+        """Capture the current screen as PNG data."""
         from pymobiledevice3.remote.core_device.screen_capture_service import ScreenCaptureService
 
         async with self.rsd() as rsd:
@@ -167,6 +177,7 @@ class RemoteDevice:
                 return response["image"]
 
     async def screenshot(self, output: Path) -> tuple[int, int]:
+        """Save the screen to a file only if it is a valid PNG, and return its width and height."""
         data = await self.screenshot_bytes()
         dimensions = png_dimensions(data)
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -174,6 +185,7 @@ class RemoteDevice:
         return dimensions
 
     async def launch(self, bundle_id: str) -> None:
+        """Open an app. SpringBoard is refused, because launching it restarts the home screen."""
         from pymobiledevice3.remote.core_device.app_service import AppServiceService
 
         if bundle_id in UNLAUNCHABLE_BUNDLES:
@@ -183,6 +195,7 @@ class RemoteDevice:
                 await apps.launch_application(bundle_id)
 
     async def home(self) -> None:
+        """Press and release the Home button."""
         from pymobiledevice3.remote.core_device.hid_service import (
             HID_BUTTON_STATE_DOWN,
             HID_BUTTON_STATE_UP,
@@ -196,12 +209,14 @@ class RemoteDevice:
                 await buttons.send_button(*HOME_BUTTON, HID_BUTTON_STATE_UP)
 
     async def _geometry(self, rsd: Any) -> tuple[int, int, int]:
+        """Ask the device for its screen size and rotation, without transferring a screenshot."""
         from pymobiledevice3.remote.core_device.device_info import DeviceInfoService
 
         async with DeviceInfoService(rsd) as info:
             return screen_geometry(await info.get_display_info())
 
     async def tap(self, x: float, y: float, hold: float = 0.08) -> tuple[int, int]:
+        """Touch one point given in screenshot pixels, and return the screen size."""
         from pymobiledevice3.remote.core_device.hid_service import UniversalHIDServiceService
 
         if hold < 0:
@@ -222,6 +237,7 @@ class RemoteDevice:
         duration: float = 0.6,
         steps: int = 30,
     ) -> tuple[int, int]:
+        """Drag one finger between two points given in screenshot pixels, and return the screen size."""
         from pymobiledevice3.remote.core_device.hid_service import UniversalHIDServiceService
 
         if steps < 1:
@@ -240,4 +256,5 @@ class RemoteDevice:
 
 
 def run(coroutine: Any) -> Any:
+    """Run one asynchronous operation to completion from synchronous code."""
     return asyncio.run(coroutine)

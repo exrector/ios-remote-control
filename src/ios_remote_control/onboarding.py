@@ -1,3 +1,5 @@
+"""Create RemotePairing records from existing trust, and move them between computers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +9,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
 from .config import Device
 
@@ -19,7 +20,7 @@ BUNDLE_FORMAT = 1
 
 
 class SetupError(RuntimeError):
-    pass
+    """Pairing or moving a setup failed in a way the user can act on."""
 
 
 def current_host_id() -> str:
@@ -30,16 +31,19 @@ def current_host_id() -> str:
 
 
 def paired_identifiers() -> list[str]:
+    """List the devices that have a RemotePairing record on this computer."""
     from pymobiledevice3.pair_records import iter_remote_pair_records_by_identifier
 
     return [identifier for identifier, _path, _record in iter_remote_pair_records_by_identifier()]
 
 
 def has_pair_record(identifier: str) -> bool:
+    """Return whether this computer has a RemotePairing record for the device."""
     return identifier in paired_identifiers()
 
 
 def protect_pair_record(identifier: str) -> None:
+    """Restrict a device's RemotePairing record to its owner, because it gives control of the device."""
     from pymobiledevice3.pair_records import iter_remote_pair_records_by_identifier
 
     for found, path, _record in iter_remote_pair_records_by_identifier():
@@ -48,6 +52,7 @@ def protect_pair_record(identifier: str) -> None:
 
 
 def failure_reason(stderr: str) -> str:
+    """Return the last line of a failed command's error output, which usually names the cause."""
     lines = [line.strip() for line in stderr.splitlines() if line.strip()]
     return lines[-1][:300] if lines else "no details reported"
 
@@ -125,6 +130,7 @@ def import_bundle(source: Path, host: str | None = None, force: bool = False) ->
 
 
 def bootstrap_remote_pairing(identifier: str) -> None:
+    """Create a RemotePairing record over the trusted lockdown channel. This cannot create the first trust."""
     command = [
         sys.executable,
         "-m",

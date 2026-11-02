@@ -1,3 +1,5 @@
+"""Saved device aliases, stored as JSON with owner-only permissions."""
+
 from __future__ import annotations
 
 import json
@@ -8,6 +10,8 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Device:
+    """A saved device: its alias, address, identifier, RemotePairing port, and this pairing's host identity."""
+
     name: str
     host: str
     identifier: str
@@ -16,11 +20,13 @@ class Device:
 
 
 def validate_port(port: int) -> None:
+    """Raise ValueError unless the port is a valid TCP port."""
     if not 1 <= port <= 65535:
         raise ValueError(f"port {port} is outside 1..65535")
 
 
 def config_path() -> Path:
+    """Return the alias file: IOS_REMOTE_CONFIG, else under XDG_CONFIG_HOME, else ~/.config."""
     override = os.environ.get("IOS_REMOTE_CONFIG")
     if override:
         return Path(override).expanduser()
@@ -29,6 +35,7 @@ def config_path() -> Path:
 
 
 def load_devices(path: Path | None = None) -> dict[str, Device]:
+    """Read saved devices by alias. A missing file means there are none."""
     path = path or config_path()
     if not path.exists():
         return {}
@@ -37,6 +44,7 @@ def load_devices(path: Path | None = None) -> dict[str, Device]:
 
 
 def save_devices(devices: dict[str, Device], path: Path | None = None) -> None:
+    """Replace the alias file in one step, readable only by its owner."""
     path = path or config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {

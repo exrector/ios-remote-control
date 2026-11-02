@@ -6,14 +6,29 @@ This project is a thin orchestration layer over [pymobiledevice3](https://github
 
 ## First condition: the device must already be paired with your Mac
 
-**This tool does not create the first pairing.** Pair the device with your Mac yourself before you start. Check that Xcode or Device Hub shows it as paired.
+**This tool does not create the first pairing.** A person pairs the device with the Mac first, and Xcode or Device Hub then shows it as paired.
 
-| Device | How to pair it the first time |
-| --- | --- |
-| iPad on iPadOS 17.7 | By cable. Every network route we tried was refused. |
-| Newer iOS versions | Device Hub has **File > Pair Nearby Device** for iOS 27 and later. We have not completed this route. Use a cable if it does not work. |
+| Device | System | Pair by cable | Pair without a cable |
+| --- | --- | --- | --- |
+| iPhone, iPad | iOS or iPadOS 27 and later | Yes | Yes, on the same Wi-Fi |
+| iPhone, iPad | iOS or iPadOS 26 and earlier | Yes | **No** |
+| Apple Watch | Companion iPhone comes first | Through the paired iPhone | watchOS 27 and later |
+| Apple TV | tvOS | Not described by Apple | Yes, on the same Wi-Fi with IPv6, using a PIN |
+| Apple Vision Pro | visionOS | Not described by Apple | Yes, on the same Wi-Fi with IPv6, using a PIN |
 
-Do not remove the device from Xcode or Device Hub afterwards. That deletes the trust this tool depends on.
+This tool supports iPhones and iPads on iOS or iPadOS 17 and later. It does not support Apple Watch, Apple TV, or Apple Vision Pro, even though they can pair with a Mac.
+
+[Devices, systems, and connections](plugins/ios-remote-control/skills/ios-remote-control/references/devices.md) has the steps for each device, what breaks a pairing, and Apple's sources.
+
+## Documentation for AI agents
+
+This tool is meant to be used by an agent, which gets everything it needs from the plugin:
+
+- [Skill](plugins/ios-remote-control/skills/ios-remote-control/SKILL.md): how to connect and work safely.
+- [Command reference](plugins/ios-remote-control/skills/ios-remote-control/references/commands.md): every command, argument, output field, and error.
+- [Devices and connections](plugins/ios-remote-control/skills/ios-remote-control/references/devices.md): what pairs how, on which system.
+
+Tests fail if a command, an argument, a function, or a class is left undocumented.
 
 ## What it solves
 
@@ -26,15 +41,14 @@ Apple's normal tooling discovers devices on the local network with Bonjour. That
 | First pairing by cable, then `setup` and control over Tailscale | iPad, iPadOS 17.7.11 | Works |
 | `setup` over Wi-Fi with no cable, on a device already paired with the Mac | iPhone, iOS 27.2 | Works |
 | `info` and screenshots on a locked screen, on the same Wi-Fi | iPhone, iOS 27.2 | Works |
-| Moving the setup to a new home folder and hostname with `export` and `import` | iPhone, iOS 27.2 | Works |
 | Screenshots, app launch, tap, swipe, and Home over a direct Tailscale path | iPad, iPadOS 17.7.11 | Works, 2–3 seconds per command |
-| Commands from another country over a relayed Tailscale path (DERP) | iPad, iPadOS 17.7.11 | Works, about 9 seconds per command |
+| Tap, swipe, Home, and screenshots from another country over a relayed Tailscale path (DERP), after `export` and `import` | iPad, iPadOS 17.7.11 | Works: 8–17 seconds per command |
 | Touch input in all four orientations | iPad, iPadOS 17.7.11 | Correct |
 | Pairing a new computer directly over the network, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS |
 | Pairing a new computer through `lockdownd` over Tailscale or Wi-Fi, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS: it withholds the key that pairing needs |
 | Finding a device in Xcode tools after removing it from Xcode, with no cable | iPad, iPadOS 17.7.11 | Not found |
 
-Not verified yet: an iPhone over Tailscale, touch input on iPhones, and `export`/`import` between two physical computers with this release.
+Not verified yet: an iPhone over Tailscale, touch input on iPhones, and first pairing without a cable.
 
 ## Requirements
 
@@ -132,6 +146,8 @@ ios-remote home --device home-ipad
 ios-remote tap --device home-ipad 500 700
 ios-remote swipe --device home-ipad 1500 800 500 800
 ```
+
+The [command reference](plugins/ios-remote-control/skills/ios-remote-control/references/commands.md) describes every command, argument, output field, and error.
 
 Tap and swipe coordinates are pixels in the current screenshot, in the orientation the screenshot shows. The CLI reads the display rotation from the device and converts the pixels to CoreDevice HID coordinates, which stay in the native orientation.
 

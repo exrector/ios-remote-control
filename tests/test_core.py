@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 import argparse
+import ast
 import asyncio
 import contextlib
 import io
@@ -147,7 +148,7 @@ class CliTests(unittest.TestCase):
 
     def test_doctor_fails_when_unpaired(self):
         code, payload = self.run_doctor(False)
-        self.assertEqual((code, payload["status"]), (1, "needs_usb_pairing"))
+        self.assertEqual((code, payload["status"]), (1, "needs_pairing"))
 
     def test_unknown_alias_is_reported_as_json(self):
         output = io.StringIO()
@@ -297,6 +298,51 @@ class PackagingTests(unittest.TestCase):
         for relative in (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json"):
             names = [entry["name"] for entry in self.manifest(relative)["plugins"]]
             self.assertEqual(names, ["ios-remote-control"], relative)
+
+
+class DocumentationTests(unittest.TestCase):
+    root = Path(__file__).resolve().parent.parent
+
+    def commands(self):
+        for action in cli.parser()._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                return action.choices
+        self.fail("no subcommands")
+
+    def test_every_function_class_and_module_has_a_docstring(self):
+        for path in sorted((self.root / "src").rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            self.assertTrue(ast.get_docstring(tree), f"{path.name}: module")
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    self.assertTrue(ast.get_docstring(node), f"{path.name}: {node.name}")
+
+    def test_every_command_and_argument_has_help(self):
+        root_actions = next(a for a in cli.parser()._actions if isinstance(a, argparse._SubParsersAction))
+        described = {choice.dest for choice in root_actions._choices_actions}
+        for name, command in self.commands().items():
+            if name != "pair-usb":
+                self.assertIn(name, described, f"{name}: command help")
+            for action in command._actions:
+                if not isinstance(action, argparse._HelpAction):
+                    self.assertTrue(action.help, f"{name} {action.dest}: argument help")
+
+    def test_reference_documents_every_command_and_option(self):
+        skill = self.root / "plugins/ios-remote-control/skills/ios-remote-control"
+        reference = (skill / "references/commands.md").read_text(encoding="utf-8")
+        for name, command in self.commands().items():
+            self.assertIn(f"`{name}`" if name == "pair-usb" else f"### `{name}`", reference, name)
+            for action in command._actions:
+                for option in action.option_strings:
+                    if option not in ("-h", "--help"):
+                        self.assertIn(f"`{option}`", reference, f"{name} {option}")
+
+    def test_skill_links_its_references(self):
+        skill = self.root / "plugins/ios-remote-control/skills/ios-remote-control"
+        text = (skill / "SKILL.md").read_text(encoding="utf-8")
+        for reference in ("references/commands.md", "references/devices.md"):
+            self.assertIn(reference, text)
+            self.assertTrue((skill / reference).is_file(), reference)
 
 
 class ConfigTests(unittest.TestCase):
