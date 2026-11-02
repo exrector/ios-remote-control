@@ -14,7 +14,14 @@ import subprocess
 import ios_remote_control
 from ios_remote_control import cli
 from ios_remote_control.config import Device, load_devices, save_devices
-from ios_remote_control.device import RemoteDevice, pixel_to_hid, png_dimensions, rotation_degrees, screen_to_hid
+from ios_remote_control.device import (
+    RemoteDevice,
+    pixel_to_hid,
+    png_dimensions,
+    rotation_degrees,
+    screen_geometry,
+    screen_to_hid,
+)
 from ios_remote_control.onboarding import (
     SetupError,
     bootstrap_remote_pairing,
@@ -56,6 +63,25 @@ class RotationTests(unittest.TestCase):
             screen_to_hid(10, 10, 1536, 2048, 270)
         with self.assertRaisesRegex(ValueError, "rotation 0"):
             screen_to_hid(10, 10, 2048, 1536, 0)
+
+    def geometry(self, orientation):
+        return screen_geometry({
+            "displays": [
+                {"primary": False, "currentMode": {"size": [0.0, 0.0]}, "currentOrientation": "rot0"},
+                {
+                    "primary": True,
+                    "currentMode": {"size": [1536.0, 2048.0]},
+                    "currentOrientation": orientation,
+                    "nativeOrientation": "rot0",
+                },
+            ]
+        })
+
+    def test_geometry_matches_what_a_screenshot_shows(self):
+        self.assertEqual(self.geometry("rot0"), (1536, 2048, 0))
+        self.assertEqual(self.geometry("rot180"), (1536, 2048, 180))
+        self.assertEqual(self.geometry("rot90"), (2048, 1536, 90))
+        self.assertEqual(self.geometry("rot270"), (2048, 1536, 270))
 
     def test_rotation_comes_from_the_primary_display(self):
         info = {

@@ -9,8 +9,9 @@ from typing import AsyncIterator, Any
 from .config import Device
 from .onboarding import has_pair_record
 
-# pymobiledevice3 gives up after one second, too short for a relayed Tailscale path.
+# pymobiledevice3 gives up after one to three seconds, too short for a relayed Tailscale path.
 CONNECT_TIMEOUT = 10
+HANDSHAKE_TIMEOUT = 20
 HOME_BUTTON = (0x0C, 0x40)
 HID_MAX = 65535
 ROTATIONS = {"rot0": 0, "rot90": 90, "rot180": 180, "rot270": 270}
@@ -43,6 +44,14 @@ def rotation_degrees(display_info: dict[str, Any]) -> int:
     return (current - ROTATIONS[display.get("nativeOrientation", "rot0")]) % 360
 
 
+def screen_geometry(display_info: dict[str, Any]) -> tuple[int, int, int]:
+    """Width and height as a screenshot shows them, and the rotation, without capturing a screenshot."""
+    display = next(item for item in display_info["displays"] if item.get("primary"))
+    width, height = (int(value) for value in display["currentMode"]["size"])
+    rotation = rotation_degrees(display_info)
+    return (height, width, rotation) if rotation in (90, 270) else (width, height, rotation)
+
+
 def screen_to_hid(x: float, y: float, width: int, height: int, rotation: int) -> tuple[int, int]:
     """Map screenshot pixels to HID coordinates, which stay in the native orientation."""
     if (rotation in (90, 270)) != (width > height):
@@ -63,7 +72,7 @@ class RemoteDevice:
 
     @asynccontextmanager
     async def rsd(self) -> AsyncIterator[Any]:
-        from pymobiledevice3.remote import tunnel_service, userspace_tunnel
+        from pymobiledevice3.remote import remote_service_discovery, remotexpc, tunnel_service, userspace_tunnel
         from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
         from pymobiledevice3.remote.tunnel_service import RemotePairingManualPairingService
         from pymobiledevice3.remote.userspace_tunnel import UserspaceDialPlane
@@ -93,7 +102,11 @@ class RemoteDevice:
                 )
 
             previous_use_userspace = tunnel_service.USE_USERSPACE_TUNNEL
+            previous_first_reply = remotexpc.FIRST_REPLY_TIMEOUT
+            previous_peer_info = remote_service_discovery.PEER_INFO_TIMEOUT
             tunnel_service.USE_USERSPACE_TUNNEL = True
+            remotexpc.FIRST_REPLY_TIMEOUT = HANDSHAKE_TIMEOUT
+            remote_service_discovery.PEER_INFO_TIMEOUT = HANDSHAKE_TIMEOUT
             try:
                 async with service.start_tcp_tunnel() as tunnel:
                     tun = tunnel.client.tun
@@ -120,6 +133,8 @@ class RemoteDevice:
                             userspace_tunnel._active_tunnel = previous_tunnel
             finally:
                 tunnel_service.USE_USERSPACE_TUNNEL = previous_use_userspace
+                remotexpc.FIRST_REPLY_TIMEOUT = previous_first_reply
+                remote_service_discovery.PEER_INFO_TIMEOUT = previous_peer_info
         finally:
             await service.close()
 
@@ -180,18 +195,11 @@ class RemoteDevice:
                 await asyncio.sleep(0.05)
                 await buttons.send_button(*HOME_BUTTON, HID_BUTTON_STATE_UP)
 
-    async def _screen_size(self, rsd: Any) -> tuple[int, int]:
-        from pymobiledevice3.remote.core_device.screen_capture_service import ScreenCaptureService
-
-        async with ScreenCaptureService(rsd) as capture:
-            response = await capture.capture_screenshot()
-        return png_dimensions(response["image"])
-
-    async def _rotation(self, rsd: Any) -> int:
+    async def _geometry(self, rsd: Any) -> tuple[int, int, int]:
         from pymobiledevice3.remote.core_device.device_info import DeviceInfoService
 
         async with DeviceInfoService(rsd) as info:
-            return rotation_degrees(await info.get_display_info())
+            return screen_geometry(await info.get_display_info())
 
     async def tap(self, x: float, y: float, hold: float = 0.08) -> tuple[int, int]:
         from pymobiledevice3.remote.core_device.hid_service import UniversalHIDServiceService
@@ -199,8 +207,8 @@ class RemoteDevice:
         if hold < 0:
             raise ValueError("hold must not be negative")
         async with self.rsd() as rsd:
-            width, height = await self._screen_size(rsd)
-            point = screen_to_hid(x, y, width, height, await self._rotation(rsd))
+            width, height, rotation = await self._geometry(rsd)
+            point = screen_to_hid(x, y, width, height, rotation)
             async with UniversalHIDServiceService(rsd) as hid:
                 await hid.multi_tap([point], hold=hold)
             return width, height
@@ -221,8 +229,7 @@ class RemoteDevice:
         if duration <= 0:
             raise ValueError("duration must be positive")
         async with self.rsd() as rsd:
-            width, height = await self._screen_size(rsd)
-            rotation = await self._rotation(rsd)
+            width, height, rotation = await self._geometry(rsd)
             path = (
                 *screen_to_hid(x1, y1, width, height, rotation),
                 *screen_to_hid(x2, y2, width, height, rotation),
