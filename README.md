@@ -19,7 +19,7 @@ Apple's normal tooling discovers devices on the local network with Bonjour. That
 | Commands from another country over a relayed Tailscale path (DERP) | iPad, iPadOS 17.7.11 | Works, about 9 seconds per command |
 | Touch input in all four orientations | iPad, iPadOS 17.7.11 | Correct |
 | Pairing a new computer directly over the network, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS |
-| Pairing a new computer through `lockdownd` over Tailscale, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS: it withholds the key that pairing needs |
+| Pairing a new computer through `lockdownd` over Tailscale or Wi-Fi, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS: it withholds the key that pairing needs |
 | Finding a device in Xcode tools after removing it from Xcode, with no cable | iPad, iPadOS 17.7.11 | Not found |
 
 Not verified yet: an iPhone over Tailscale, touch input on iPhones, and `export`/`import` between two physical computers with this release.
@@ -107,7 +107,7 @@ The file gives full control of the device. Delete it after importing, and never 
 - Each device is stored in `~/.config/ios-remote-control/devices.json` with mode `0600`. Set `IOS_REMOTE_CONFIG` to use a different path.
 - Pairing records are credentials and stay in `pymobiledevice3`'s data folder.
 - iOS knows your computer by an identity derived from its hostname. Aliases made with this version save it, so pairing survives a rename. For an older alias, run `ios-remote add` again.
-- Removing a device from Xcode can also cut off this tool. This happened on an iPad, so pair it again before relying on it.
+- Removing a device from Xcode also deletes the Mac's trust record, and this tool lost access too. On an iPad, no network route could restore it, so avoid doing this to a device you cannot reach in person.
 
 ## Use
 
