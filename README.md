@@ -165,7 +165,7 @@ For reliable automation, always use an observe-act-verify loop:
 The device can be controlled unattended only while it is paired, online, and unlocked. Someone has to be with it to:
 
 - establish the first trust between the computer and the device;
-- unlock it, because this tool does not enter a passcode. Other commands still work while it is locked, and an app can open over the lock screen and show its data, so treat a pairing like a key to the device;
+- type the passcode, on the device or through `ios-remote unlock`, a danger-zone command that takes it at a hidden prompt in a terminal. An agent never sees it. Other commands still work while it is locked, and an app can open over the lock screen and show its data, so treat a pairing like a key to the device;
 - answer Touch ID or Face ID prompts, which touch input cannot satisfy;
 - bring it back after a reboot or when Tailscale has stopped running on it.
 

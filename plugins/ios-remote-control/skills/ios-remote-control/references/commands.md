@@ -145,9 +145,39 @@ ios-remote home --device ALIAS
 
 Prints `{"status": "pressed", "button": "home"}`. If Spotlight is open, this may not close it. A swipe on the screen does. Tested on an iPad with a Home button, but not on a device without one.
 
+### `unlock`
+
+**DANGER ZONE.** A person types the passcode, and the tool enters it on the device once. An agent can start this command in the user's terminal, but must never ask for, see, type, or store the passcode.
+
+```sh
+ios-remote unlock --device ALIAS
+```
+
+| Argument | Required | Meaning |
+| --- | --- | --- |
+| `--device` | Yes | Saved device alias |
+
+There is deliberately no passcode argument. The command works only at a real terminal: it asks the person to type `UNLOCK`, then reads the passcode at a hidden prompt.
+
+| `status` | Meaning |
+| --- | --- |
+| `unlocked` | The device reports that it is unlocked. |
+| `already_unlocked` | It was not locked, so nothing was typed. |
+
+It refuses, without entering any digits, when:
+
+- there is no terminal, such as when run by an agent's shell;
+- the passcode is not 4 or 6 digits;
+- the screen size has no measured keypad, or the device is not in portrait;
+- a check of the screenshot does not find the keypad.
+
+If the device is still locked after the attempt, the command reports an error and does not retry, because repeated wrong passcodes disable the device. Do not run it again without asking the user.
+
+Keypad layouts are measured per screen. Only 1290×2796 (iPhone 15 Pro Max) is included so far.
+
 ## On a locked device
 
-Tested on an iPhone with iOS 27.2 from another country over a relayed Tailscale path. The tool cannot unlock a device, and it does not enter a passcode. Everything else still reaches it:
+Tested on an iPhone with iOS 27.2 from another country over a relayed Tailscale path. Without `unlock`, the tool cannot get past the lock. Everything else still reaches the device:
 
 | Command | Screen off | Screen on |
 | --- | --- | --- |

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,14 @@ from .onboarding import (
     import_bundle,
     paired_identifiers,
 )
+
+
+UNLOCK_WARNING = """
+DANGER ZONE: this enters the passcode of {device!r} once.
+- Anyone watching the device or its screen can see what it does.
+- Repeated wrong passcodes disable the device, so this never retries.
+- The passcode is not stored, logged, or printed.
+"""
 
 
 def emit(payload: dict[str, Any]) -> None:
@@ -190,6 +200,18 @@ def home(args: argparse.Namespace) -> None:
     emit({"status": "pressed", "button": "home"})
 
 
+def unlock(args: argparse.Namespace) -> None:
+    """Handle `unlock`: a person types the passcode at a hidden prompt, and it goes no further than the device."""
+    if not sys.stdin.isatty():
+        raise ValueError("unlock needs a person at a terminal; the passcode cannot come from a program or an agent")
+    print(UNLOCK_WARNING.format(device=args.device), file=sys.stderr)
+    print("Type UNLOCK to continue: ", end="", file=sys.stderr, flush=True)
+    if input().strip() != "UNLOCK":
+        raise ValueError("not confirmed; nothing was sent to the device")
+    outcome = run(RemoteDevice(selected_device(args.device)).unlock(getpass.getpass("Passcode (hidden): ")))
+    emit({"status": outcome, "device": args.device})
+
+
 def tap(args: argparse.Namespace) -> None:
     """Handle `tap`: touch one point given in screenshot pixels."""
     width, height = run(RemoteDevice(selected_device(args.device)).tap(args.x, args.y, args.hold))
@@ -279,6 +301,7 @@ def parser() -> argparse.ArgumentParser:
         ("screenshot", screenshot, "capture the current screen"),
         ("launch", launch, "launch an application by bundle identifier"),
         ("home", home, "press the Home button"),
+        ("unlock", unlock, "DANGER ZONE: a person types the passcode at a hidden prompt, and it is entered once"),
         ("tap", tap, "tap screenshot pixel coordinates"),
         ("swipe", swipe, "swipe between screenshot pixel coordinates"),
     ]:

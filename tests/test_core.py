@@ -19,9 +19,12 @@ from ios_remote_control.device import (
     RemoteDevice,
     pixel_to_hid,
     png_dimensions,
+    keypad_point,
+    keypad_visible,
     rotation_degrees,
     screen_geometry,
     screen_to_hid,
+    validate_passcode,
 )
 from ios_remote_control.onboarding import (
     SetupError,
@@ -298,6 +301,76 @@ class PackagingTests(unittest.TestCase):
         for relative in (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json"):
             names = [entry["name"] for entry in self.manifest(relative)["plugins"]]
             self.assertEqual(names, ["ios-remote-control"], relative)
+
+
+class UnlockTests(unittest.TestCase):
+    device = RemoteDevice(Device("phone", "host", "id"))
+
+    def screen(self, keys=True, size=(1290, 2796)):
+        from PIL import Image, ImageDraw
+
+        image = Image.new("RGB", size, (20, 20, 20))
+        if keys:
+            draw = ImageDraw.Draw(image)
+            for digit in "0123456789":
+                x, y = keypad_point(digit, *size)
+                draw.ellipse((x - 125, y - 125, x + 125, y + 125), fill=(60, 60, 60))
+        output = io.BytesIO()
+        image.save(output, "PNG")
+        return output.getvalue()
+
+    def test_digits_map_to_measured_keys(self):
+        self.assertEqual(keypad_point("1", 1290, 2796), (309, 1113))
+        self.assertEqual(keypad_point("6", 1290, 2796), (981, 1437))
+        self.assertEqual(keypad_point("8", 1290, 2796), (645, 1761))
+        self.assertEqual(keypad_point("0", 1290, 2796), (645, 2085))
+
+    def test_unmeasured_screen_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "no passcode keypad layout"):
+            keypad_point("1", 1536, 2048)
+
+    def test_recognizes_the_keypad_only_when_it_is_there(self):
+        self.assertTrue(keypad_visible(self.screen()))
+        self.assertFalse(keypad_visible(self.screen(keys=False)))
+
+    def test_passcode_errors_do_not_reveal_it(self):
+        for bad in ("12345", "abcd", "١٢٣٤", ""):
+            with self.assertRaises(ValueError) as caught:
+                validate_passcode(bad)
+            if bad:
+                self.assertNotIn(bad, str(caught.exception))
+        validate_passcode("1234")
+        validate_passcode("123456")
+
+    def run_cli(self, tty=False):
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict("os.environ", {"IOS_REMOTE_CONFIG": str(Path(temporary) / "devices.json")}), \
+             patch("sys.argv", ["ios-remote", "unlock", "--device", "phone"]), \
+             patch("sys.stdin.isatty", return_value=tty), \
+             patch.object(RemoteDevice, "unlock", AsyncMock(return_value="unlocked")) as send, \
+             patch("builtins.input", return_value="no"), \
+             patch("getpass.getpass", return_value="123456") as ask, \
+             contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                cli.main()
+        return json.loads(output.getvalue()), send, ask
+
+    def test_refuses_without_a_person_at_a_terminal(self):
+        payload, send, ask = self.run_cli(tty=False)
+        self.assertIn("person at a terminal", payload["error"])
+        ask.assert_not_called()
+        send.assert_not_called()
+
+    def test_needs_explicit_confirmation(self):
+        payload, send, ask = self.run_cli(tty=True)
+        self.assertIn("not confirmed", payload["error"])
+        ask.assert_not_called()
+        send.assert_not_called()
+
+    def test_passcode_cannot_be_passed_as_an_argument(self):
+        options = next(a for a in cli.parser()._actions if isinstance(a, argparse._SubParsersAction)).choices["unlock"]
+        self.assertEqual([a.dest for a in options._actions], ["help", "device"])
 
 
 class DocumentationTests(unittest.TestCase):

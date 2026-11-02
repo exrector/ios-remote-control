@@ -81,7 +81,7 @@ Screenshots can contain private information. Keep them local, use temporary or u
 
 - `ios-remote doctor --device ALIAS` reports whether configuration, pairing, and connectivity are ready, and exits with status 1 otherwise.
 - `ios-remote info --device ALIAS` checks the complete RemotePairing and RSD path and reports orientation, backlight, and `passcode_required`.
-- Unlocking a device, a Touch ID or Face ID prompt, or a device that was rebooted needs a person. Report this to the user; do not try to get around it. Never tap digits on a passcode screen.
+- Unlocking a device, a Touch ID or Face ID prompt, or a device that was rebooted needs a person. Report this to the user; do not try to get around it. Never ask for, see, type, store, or tap a passcode, even a temporary one the user offers. If the user asks to unlock the device, start `ios-remote unlock --device ALIAS` in their terminal and let them type it. If it fails, do not start it again without asking.
 - Commands still reach a locked device, and `launch` can open an app over the lock screen and show its data. Do not use this to reach private apps unless the user asks for that exact thing. See "On a locked device" in [references/commands.md](references/commands.md).
 - A connection failure usually means the device is asleep/offline, the host or port is stale, Tailscale has no route, or the RemotePairing record is missing.
 - Do not replace direct IP routing with public port forwarding. Prefer a private Tailnet or equivalent trusted network.

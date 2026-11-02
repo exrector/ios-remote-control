@@ -92,7 +92,7 @@ So the order is:
 | Situation | Why |
 | --- | --- |
 | First pairing | iOS requires it to be confirmed at the device |
-| Unlocking the device | This tool does not enter a passcode. `info` reports `passcode_required`. Some commands work while locked: see the command reference. |
+| Unlocking the device | The owner must type the passcode, either on the device or through `ios-remote unlock` at a terminal. An agent never handles it. `info` reports `passcode_required`. |
 | Touch ID or Face ID prompt | Touch input cannot satisfy it |
 | Tailscale stopped on the device, or the device restarted | The device has no route until Tailscale runs again |
 
