@@ -1,0 +1,24 @@
+{
+  "name": "ios-remote-control",
+  "version": "0.4.0",
+  "description": "See and control a paired physical iPhone or iPad over Tailscale or any routed network, without WebDriverAgent or root.",
+  "author": { "name": "exrector" },
+  "homepage": "https://github.com/exrector/ios-remote-control",
+  "repository": "https://github.com/exrector/ios-remote-control",
+  "license": "GPL-3.0-or-later",
+  "keywords": ["ios", "ipad", "iphone", "tailscale", "automation", "device-control"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "iOS Remote Control",
+    "shortDescription": "Control a paired iPhone or iPad over Tailscale",
+    "longDescription": "Take screenshots, launch apps, tap, swipe, and press Home on a paired physical iPhone or iPad from anywhere on your Tailscale network. First pairing needs a person with the device. Requires the ios-remote command-line tool, which the skill helps install.",
+    "developerName": "exrector",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://github.com/exrector/ios-remote-control",
+    "defaultPrompt": ["Check whether my iPad is reachable and show me its screen"],
+    "brandColor": "#2563EB",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg"
+  }
+}

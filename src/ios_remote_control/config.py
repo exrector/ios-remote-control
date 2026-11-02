@@ -12,6 +12,7 @@ class Device:
     host: str
     identifier: str
     port: int = 49152
+    host_id: str | None = None
 
 
 def validate_port(port: int) -> None:
@@ -40,7 +41,7 @@ def save_devices(devices: dict[str, Device], path: Path | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "devices": {
-            name: {key: value for key, value in asdict(device).items() if key != "name"}
+            name: {key: value for key, value in asdict(device).items() if key != "name" and value is not None}
             for name, device in sorted(devices.items())
         }
     }

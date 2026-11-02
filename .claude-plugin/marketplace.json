@@ -1,0 +1,18 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "ios-remote-control",
+  "owner": {
+    "name": "exrector",
+    "url": "https://github.com/exrector"
+  },
+  "plugins": [
+    {
+      "name": "ios-remote-control",
+      "source": "./plugins/ios-remote-control",
+      "description": "See and control a paired physical iPhone or iPad over Tailscale or any routed network."
+    }
+  ],
+  "metadata": {
+    "description": "Control a paired physical iPhone or iPad over Tailscale."
+  }
+}

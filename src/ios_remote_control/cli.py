@@ -7,7 +7,7 @@ from typing import Any
 
 from .config import Device, load_devices, save_devices, validate_port
 from .device import PairingRequiredError, RemoteDevice, run
-from .onboarding import SetupError, bootstrap_remote_pairing, find_usb_identifier, paired_identifiers
+from .onboarding import SetupError, bootstrap_remote_pairing, current_host_id, find_usb_identifier, paired_identifiers
 
 
 def emit(payload: dict[str, Any]) -> None:
@@ -32,7 +32,7 @@ def selected_device(name: str) -> Device:
 def add_device(args: argparse.Namespace) -> None:
     validate_port(args.port)
     devices = load_devices()
-    devices[args.name] = Device(args.name, args.host, args.identifier, args.port)
+    devices[args.name] = Device(args.name, args.host, args.identifier, args.port, args.host_id or current_host_id())
     save_devices(devices)
     emit({"status": "saved", "device": args.name, "host": args.host, "port": args.port})
 
@@ -49,7 +49,13 @@ def remove_device(args: argparse.Namespace) -> None:
 def list_devices(_: argparse.Namespace) -> None:
     emit({
         "devices": [
-            {"name": device.name, "host": device.host, "port": device.port, "identifier": device.identifier}
+            {
+                "name": device.name,
+                "host": device.host,
+                "port": device.port,
+                "identifier": device.identifier,
+                "host_id": device.host_id,
+            }
             for device in load_devices().values()
         ]
     })
@@ -70,7 +76,7 @@ def setup(args: argparse.Namespace) -> None:
     identifier = run(find_usb_identifier(args.udid))
     bootstrap_remote_pairing(identifier)
     devices = load_devices()
-    device = Device(args.name, args.host, identifier, args.port)
+    device = Device(args.name, args.host, identifier, args.port, current_host_id())
     devices[args.name] = device
     save_devices(devices)
     result: dict[str, Any] = {
@@ -180,6 +186,7 @@ def parser() -> argparse.ArgumentParser:
     add.add_argument("--host", required=True, help="Tailscale name, IP address, or other routable host")
     add.add_argument("--identifier", required=True, help="RemotePairing identifier, normally the device UDID")
     add.add_argument("--port", type=int, default=49152)
+    add.add_argument("--host-id", help="identity the pairing was made with; defaults to this computer's")
     add.set_defaults(handler=add_device)
 
     listing = commands.add_parser("list", help="list configured device aliases")

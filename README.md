@@ -8,29 +8,62 @@ This project is a thin orchestration layer over [pymobiledevice3](https://github
 
 Apple's normal tooling discovers devices on the local network with Bonjour. That discovery does not cross most routed networks. `ios-remote-control` skips Bonjour after pairing and connects directly to the device's reachable hostname or IP address.
 
-Verified on a physical iPad 6th generation running iPadOS 17.7.11 in all four orientations, through a direct Tailscale path on the same local network, with no root tunnel and no WebDriverAgent. Newer iOS versions, iPhones, and relayed internet paths have not been verified.
+### What has been verified
+
+| Tested on a physical iPad 6th generation, iPadOS 17.7.11 | Result |
+| --- | --- |
+| Screenshots, app launch, tap, swipe, and Home over a direct Tailscale path | Works, 2–3 seconds per command |
+| Commands from a computer in another country over a relayed Tailscale path (DERP) | Works, about 9 seconds per command |
+| Touch input in all four orientations | Correct |
+| First pairing from a new computer over Tailscale or local Wi-Fi | Refused by iOS |
+| A pairing moved to another computer | Works with the original identity |
+
+Not verified yet: iPhones, iOS newer than 17.7, the lock screen, and a full first-time `setup` over USB with this release.
 
 ## Requirements
 
-- Python 3.11 or newer
-- An iPhone or iPad supported by `pymobiledevice3`
-- One initial USB connection to establish trust and bootstrap RemotePairing
+- macOS, the only platform tested so far
+- Python 3.11 or newer, with `uv` or `pipx` to install the command
+- An iPhone or iPad supported by `pymobiledevice3`, with Developer Mode on
+- A person with the device for the first pairing
 - A route from the computer to the device, such as both devices joining the same Tailnet
 - The RemotePairing TCP port reachable on the device; the usual advertised port is `49152`, but it is configurable
 
-The commands execute on your computer. A cloud chatbot cannot reach a private Tailnet by itself; run Codex Desktop or another local agent on a computer that has the route.
+The commands execute on your computer. A cloud chatbot cannot reach a private Tailnet by itself; run Claude Code, Codex, or another local agent on a computer that has the route.
 
 ## Install
 
+### As a plugin
+
+Claude Code:
+
 ```sh
-uv tool install .
+claude plugin marketplace add exrector/ios-remote-control
+claude plugin install ios-remote-control@ios-remote-control
 ```
 
-`pipx install .` works too. Plain `pip install .` needs a virtual environment on a Homebrew Python, which refuses system-wide installs.
+Codex:
 
-Developer Mode is required for CoreDevice services, but it does **not** authorize a new computer by itself. An unpaired client can reach the RemotePairing port, but iOS rejects the setup until trust has been established through an Apple-supported pairing path. The universal path for iOS 17+ is one initial USB connection.
+```sh
+codex plugin marketplace add exrector/ios-remote-control
+codex plugin add ios-remote-control@ios-remote-control
+```
 
-## Set up once over USB
+The plugin gives the agent the skill. It does not install the `ios-remote` command, so the skill offers to do that the first time it runs.
+
+### Only the command
+
+```sh
+uv tool install git+https://github.com/exrector/ios-remote-control
+```
+
+`pipx install git+https://github.com/exrector/ios-remote-control` works too. From a clone, use `uv tool install .`.
+
+## Pair once, with the device in hand
+
+Developer Mode is required for CoreDevice services, but it does **not** authorize a new computer by itself. Over the network, iOS closes the connection as soon as an unpaired computer asks to pair. This happened both over Tailscale and on the same Wi-Fi, so first pairing cannot be done from afar.
+
+Once paired, the device can be anywhere on your Tailnet.
 
 Connect and unlock the device, tap **Trust** if iOS asks, then run:
 
@@ -48,9 +81,27 @@ ios-remote list-pairs
 ios-remote add home-ipad --host ipad.example-tailnet.ts.net --identifier DEVICE_IDENTIFIER
 ```
 
-Pairing records contain credentials and stay in pymobiledevice3's local data directory. Never copy them into this repository or send them to an agent.
+Pairing records contain credentials and stay in pymobiledevice3's local data directory. Never copy them into a repository or send them to an agent.
 
 The alias file is stored at `~/.config/ios-remote-control/devices.json` with mode `0600`. Set `IOS_REMOTE_CONFIG` to use a different path.
+
+iOS 27 adds pairing without a cable: `pymobiledevice3` documents `remote pair-host`, with the device on the same Wi-Fi as the computer and a code entered in **Settings > Developer > Paired Macs**. It still needs a person with the device. It has not been tested with this project.
+
+### Your computer's identity
+
+iOS knows your computer by an identity that `pymobiledevice3` derives from its hostname. Aliases made with this version save that identity, so a pairing keeps working if the hostname changes. An alias made with an earlier version does not have it; run `ios-remote add` again to save it.
+
+### Moving a pairing to another computer
+
+If someone pairs the device for you, or you want to control it from a second computer:
+
+1. On the computer that made the pairing, run `ios-remote list` and note `identifier` and `host_id`.
+2. Copy `~/.pymobiledevice3/remote_IDENTIFIER.plist` to the same path on the new computer over a private channel, and run `chmod 600` on it. Anyone holding this file can control the device.
+3. On the new computer, run:
+
+```sh
+ios-remote add home-ipad --host ipad.example-tailnet.ts.net --identifier IDENTIFIER --host-id HOST_ID
+```
 
 ## Use
 
@@ -66,7 +117,7 @@ ios-remote swipe --device home-ipad 1500 800 500 800
 
 Tap and swipe coordinates are pixels in the current screenshot, in the orientation the screenshot shows. The CLI reads the display rotation from the device and converts the pixels to CoreDevice HID coordinates, which stay in the native orientation.
 
-`info` also reports `orientation`, `rotation`, `backlight`, and `passcode_required`. `doctor` exits with status 1 unless the device is ready. Run commands one at a time: parallel screen captures can fail.
+`info` also reports `orientation`, `rotation`, `backlight`, and `passcode_required`. `doctor` exits with status 1 unless the device is ready. Run commands one at a time: parallel screen captures can fail. Each command opens its own tunnel, which accounts for most of the time it takes.
 
 For reliable automation, always use an observe-act-verify loop:
 
@@ -79,18 +130,14 @@ For reliable automation, always use an observe-act-verify loop:
 
 The device can be controlled unattended only while it is paired, online, and unlocked. Someone has to be with it to:
 
-- connect USB, unlock, and accept Trust for the first pairing;
+- do the first pairing;
 - unlock it, because this tool does not enter a passcode;
 - answer Touch ID or Face ID prompts, which touch input cannot satisfy;
 - bring it back after a reboot or when Tailscale has stopped running on it.
 
-## Codex skill
-
-The repository includes `.codex/skills/ios-remote-control`. When the repository is open in Codex it describes the safe observe-act-verify workflow. You can also copy that folder into `~/.codex/skills/` for global use.
-
 ## Current scope
 
-This first release deliberately stays small:
+This release deliberately stays small:
 
 - direct connection to a saved host and port;
 - rootless userspace tunnel;
@@ -109,4 +156,4 @@ It does not provide unattended first-time trust, bypass the lock screen, expose 
 
 ## License
 
-MIT. `pymobiledevice3` remains under its own license.
+Free and open source under [GPL-3.0-or-later](LICENSE), the same license as `pymobiledevice3`, which this project depends on.

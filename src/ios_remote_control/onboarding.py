@@ -12,6 +12,13 @@ class SetupError(RuntimeError):
     pass
 
 
+def current_host_id() -> str:
+    """The identity iOS knows this computer by; pymobiledevice3 derives it from the hostname."""
+    from pymobiledevice3.pair_records import generate_host_id
+
+    return generate_host_id()
+
+
 def paired_identifiers() -> list[str]:
     from pymobiledevice3.pair_records import iter_remote_pair_records_by_identifier
 
