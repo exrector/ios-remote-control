@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ios-remote-control"
-version = "0.7.2"
+version = "0.7.3"
 description = "Control a paired physical iPhone or iPad over any routable IP connection"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Software Development :: Testing",
 ]
-dependencies = ["pymobiledevice3>=11.49.2,<12", "pillow"]
+dependencies = ["pymobiledevice3>=11.49.2,<12"]
 
 [project.scripts]
 ios-remote = "ios_remote_control.cli:main"

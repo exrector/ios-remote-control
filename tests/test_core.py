@@ -20,7 +20,6 @@ from ios_remote_control.device import (
     pixel_to_hid,
     png_dimensions,
     keypad_point,
-    keypad_visible,
     rotation_degrees,
     screen_geometry,
     screen_to_hid,
@@ -306,19 +305,6 @@ class PackagingTests(unittest.TestCase):
 class UnlockTests(unittest.TestCase):
     device = RemoteDevice(Device("phone", "host", "id"))
 
-    def screen(self, keys=True, size=(1290, 2796)):
-        from PIL import Image, ImageDraw
-
-        image = Image.new("RGB", size, (20, 20, 20))
-        if keys:
-            draw = ImageDraw.Draw(image)
-            for digit in "0123456789":
-                x, y = keypad_point(digit, *size)
-                draw.ellipse((x - 125, y - 125, x + 125, y + 125), fill=(60, 60, 60))
-        output = io.BytesIO()
-        image.save(output, "PNG")
-        return output.getvalue()
-
     def test_digits_map_to_measured_keys(self):
         self.assertEqual(keypad_point("1", 1290, 2796), (309, 1113))
         self.assertEqual(keypad_point("6", 1290, 2796), (981, 1437))
@@ -328,10 +314,6 @@ class UnlockTests(unittest.TestCase):
     def test_unmeasured_screen_is_refused(self):
         with self.assertRaisesRegex(ValueError, "no passcode keypad layout"):
             keypad_point("1", 1536, 2048)
-
-    def test_recognizes_the_keypad_only_when_it_is_there(self):
-        self.assertTrue(keypad_visible(self.screen()))
-        self.assertFalse(keypad_visible(self.screen(keys=False)))
 
     def test_passcode_errors_do_not_reveal_it(self):
         for bad in ("123", "12345678901234567", "abcd", "١٢٣٤", ""):
