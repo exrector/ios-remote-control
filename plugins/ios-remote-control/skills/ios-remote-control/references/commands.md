@@ -173,7 +173,7 @@ It refuses, without entering any digits, when:
 
 If the device is still locked after the attempt, the command reports an error and does not retry, because repeated wrong passcodes disable the device. Do not run it again without asking the user.
 
-Codes of 4 or 6 digits submit themselves, and other lengths press the OK button after the last digit. The keys stop appearing in screenshots once typing starts, but they still work. Tested once with an 8-digit code on an iPhone with iOS 27.2 over Wi-Fi, not yet over Tailscale. Keypad layouts are measured per screen. Only 1290×2796 (iPhone 15 Pro Max) is included so far.
+Codes of 4 or 6 digits submit themselves, and other lengths press the OK button after the last digit. The keys stop appearing in screenshots once typing starts, but they still work. Tested with an 8-digit code on an iPhone with iOS 27.2, over Wi-Fi and a direct Tailscale path, but not yet over a relayed one. Keypad layouts are measured per screen. Only 1290×2796 (iPhone 15 Pro Max) is included so far.
 
 ## On a locked device
 

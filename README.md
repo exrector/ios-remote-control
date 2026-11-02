@@ -47,9 +47,9 @@ Apple's normal tooling discovers devices on the local network with Bonjour. That
 | Pairing a new computer directly over the network, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS |
 | Pairing a new computer through `lockdownd` over Tailscale or Wi-Fi, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS: it withholds the key that pairing needs |
 | Finding a device in Xcode tools after removing it from Xcode, with no cable | iPad, iPadOS 17.7.11 | Not found |
-| `unlock` with an 8-digit code typed by the owner, on the same Wi-Fi, with the iPhone face down | iPhone, iOS 27.2 | Works |
+| `unlock` with an 8-digit code typed by the owner, over a direct Tailscale path and over Wi-Fi, with the iPhone face down | iPhone, iOS 27.2 | Works |
 
-Not verified yet: `unlock` over Tailscale, codes of other lengths, an unlocked iPhone over a relayed path, swipes on iPhones, and first pairing without a cable.
+Not verified yet: `unlock` over a relayed Tailscale path, codes of other lengths, an unlocked iPhone over a relayed path, swipes on iPhones, and first pairing without a cable.
 
 ## Requirements
 
