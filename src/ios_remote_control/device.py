@@ -33,7 +33,8 @@ KEY_MIN_CONTRAST = 10
 KEY_INNER_RADIUS = 0.42
 KEY_OUTER_RADIUS = 0.6
 KEY_WIDTH = 250
-UNLOCK_WAKE_ATTEMPTS = 3
+UNLOCK_SHOW_ATTEMPTS = 4
+BACKLIGHT_ON = "activeOn"
 UNLOCK_SETTLE_SECONDS = 2
 UNLOCK_KEY_GAP_SECONDS = 0.25
 
@@ -305,16 +306,20 @@ class RemoteDevice:
         """Bring up the passcode keypad, or raise ValueError so that no digit is ever typed elsewhere."""
         from pymobiledevice3.remote.core_device.hid_service import UniversalHIDServiceService
 
+        from pymobiledevice3.remote.core_device.device_info import DeviceInfoService
+
+        start = screen_to_hid(width / 2, height * 0.97, width, height, 0)
+        end = screen_to_hid(width / 2, height * 0.45, width, height, 0)
         if keypad_visible(await self._capture(rsd)):
             return
-        for attempt in range(UNLOCK_WAKE_ATTEMPTS):
-            if attempt == UNLOCK_WAKE_ATTEMPTS - 1:
-                # A lock screen shows the keypad after a swipe up from its bottom edge.
-                start = screen_to_hid(width / 2, height * 0.97, width, height, 0)
-                end = screen_to_hid(width / 2, height * 0.45, width, height, 0)
+        for _ in range(UNLOCK_SHOW_ATTEMPTS):
+            async with DeviceInfoService(rsd) as info:
+                screen_on = (await info.get_display_info()).get("backlightState") == BACKLIGHT_ON
+            if screen_on:
                 async with UniversalHIDServiceService(rsd) as hid:
                     await hid.multi_drag([(*start, *end)], duration=0.3, steps=12)
             else:
+                # Home wakes a dark screen, but pressing it on a lit one can turn the screen off.
                 await self._press_home(rsd)
             await asyncio.sleep(UNLOCK_SETTLE_SECONDS)
             if keypad_visible(await self._capture(rsd)):
