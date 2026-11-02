@@ -15,7 +15,13 @@ import ios_remote_control
 from ios_remote_control import cli
 from ios_remote_control.config import Device, load_devices, save_devices
 from ios_remote_control.device import RemoteDevice, pixel_to_hid, png_dimensions, rotation_degrees, screen_to_hid
-from ios_remote_control.onboarding import SetupError, bootstrap_remote_pairing, find_usb_identifier
+from ios_remote_control.onboarding import (
+    SetupError,
+    bootstrap_remote_pairing,
+    export_bundle,
+    find_trusted_identifier,
+    import_bundle,
+)
 
 
 class CoordinateTests(unittest.TestCase):
@@ -150,6 +156,59 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.run_add("OTHER-COMPUTER"), "OTHER-COMPUTER")
 
 
+class BundleTests(unittest.TestCase):
+    device = Device("tablet", "tablet.local", "example-id", 49152, "SAVED-IDENTITY")
+
+    def in_home(self, home):
+        return patch("pymobiledevice3.common.get_home_folder", return_value=Path(home))
+
+    def export_from(self, home, output, record=b"secret-record"):
+        path = Path(home) / "remote_example-id.plist"
+        path.write_bytes(record)
+        with patch("pymobiledevice3.pair_records.iter_remote_pair_records_by_identifier", return_value=[("example-id", path, {})]):
+            export_bundle(self.device, output)
+
+    def test_round_trip_moves_pairing_and_identity(self):
+        with tempfile.TemporaryDirectory() as old, tempfile.TemporaryDirectory() as new:
+            bundle = Path(old) / "bundle.json"
+            self.export_from(old, bundle)
+            self.assertEqual(bundle.stat().st_mode & 0o777, 0o600)
+            with self.in_home(new):
+                device = import_bundle(bundle, host="tablet.example.ts.net")
+            self.assertEqual(device.host, "tablet.example.ts.net")
+            self.assertEqual(device.host_id, "SAVED-IDENTITY")
+            stored = Path(new) / "remote_example-id.plist"
+            self.assertEqual(stored.read_bytes(), b"secret-record")
+            self.assertEqual(stored.stat().st_mode & 0o777, 0o600)
+
+    def test_keeps_the_original_host_by_default(self):
+        with tempfile.TemporaryDirectory() as old, tempfile.TemporaryDirectory() as new:
+            bundle = Path(old) / "bundle.json"
+            self.export_from(old, bundle)
+            with self.in_home(new):
+                self.assertEqual(import_bundle(bundle).host, "tablet.local")
+
+    def test_does_not_replace_a_different_pairing_without_force(self):
+        with tempfile.TemporaryDirectory() as old, tempfile.TemporaryDirectory() as new:
+            bundle = Path(old) / "bundle.json"
+            self.export_from(old, bundle)
+            stored = Path(new) / "remote_example-id.plist"
+            stored.write_bytes(b"other-record")
+            with self.in_home(new):
+                with self.assertRaisesRegex(SetupError, "--force"):
+                    import_bundle(bundle)
+                self.assertEqual(stored.read_bytes(), b"other-record")
+                import_bundle(bundle, force=True)
+            self.assertEqual(stored.read_bytes(), b"secret-record")
+
+    def test_rejects_unknown_files(self):
+        with tempfile.TemporaryDirectory() as home:
+            source = Path(home) / "other.json"
+            source.write_text('{"format": 99}')
+            with self.assertRaisesRegex(SetupError, "not a bundle"):
+                import_bundle(source)
+
+
 class HostIdentityTests(unittest.TestCase):
     def identity_used(self, device):
         class Stop(Exception):
@@ -252,28 +311,42 @@ class BootstrapTests(unittest.TestCase):
 
 class OnboardingTests(unittest.IsolatedAsyncioTestCase):
     @patch("pymobiledevice3.usbmux.list_devices", new_callable=AsyncMock)
-    async def test_finds_only_usb_device(self, list_devices):
+    async def test_finds_a_device_trusted_over_the_network(self, list_devices):
+        list_devices.return_value = [SimpleNamespace(serial="wifi-id", is_usb=False)]
+        self.assertEqual(await find_trusted_identifier(), "wifi-id")
+
+    @patch("pymobiledevice3.usbmux.list_devices", new_callable=AsyncMock)
+    async def test_prefers_the_single_usb_device(self, list_devices):
         list_devices.return_value = [
             SimpleNamespace(serial="usb-id", is_usb=True),
             SimpleNamespace(serial="wifi-id", is_usb=False),
         ]
-        self.assertEqual(await find_usb_identifier(), "usb-id")
+        self.assertEqual(await find_trusted_identifier(), "usb-id")
 
     @patch("pymobiledevice3.usbmux.list_devices", new_callable=AsyncMock)
-    async def test_requires_usb_device(self, list_devices):
+    async def test_same_device_on_two_connections_is_one_device(self, list_devices):
+        list_devices.return_value = [
+            SimpleNamespace(serial="same", is_usb=False),
+            SimpleNamespace(serial="same", is_usb=False),
+        ]
+        self.assertEqual(await find_trusted_identifier(), "same")
+
+    @patch("ios_remote_control.onboarding.DISCOVERY_WAIT", 0)
+    @patch("pymobiledevice3.usbmux.list_devices", new_callable=AsyncMock)
+    async def test_requires_a_trusted_device(self, list_devices):
         list_devices.return_value = []
-        with self.assertRaisesRegex(SetupError, "no USB"):
-            await find_usb_identifier()
+        with self.assertRaisesRegex(SetupError, "no trusted"):
+            await find_trusted_identifier()
 
     @patch("pymobiledevice3.usbmux.list_devices", new_callable=AsyncMock)
     async def test_requires_selection_for_multiple_devices(self, list_devices):
         list_devices.return_value = [
-            SimpleNamespace(serial="first", is_usb=True),
-            SimpleNamespace(serial="second", is_usb=True),
+            SimpleNamespace(serial="first", is_usb=False),
+            SimpleNamespace(serial="second", is_usb=False),
         ]
-        with self.assertRaisesRegex(SetupError, "multiple USB"):
-            await find_usb_identifier()
-        self.assertEqual(await find_usb_identifier("second"), "second")
+        with self.assertRaisesRegex(SetupError, "multiple devices"):
+            await find_trusted_identifier()
+        self.assertEqual(await find_trusted_identifier("second"), "second")
 
 
 if __name__ == "__main__":

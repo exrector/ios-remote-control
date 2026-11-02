@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import asyncio
+import base64
+import json
+import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
+
+from .config import Device
 
 
 PAIRING_TIMEOUT = 120
+# A device on Wi-Fi drops in and out of the list while it sleeps.
+DISCOVERY_WAIT = 20
+BUNDLE_FORMAT = 1
 
 
 class SetupError(RuntimeError):
@@ -42,19 +52,76 @@ def failure_reason(stderr: str) -> str:
     return lines[-1][:300] if lines else "no details reported"
 
 
-async def find_usb_identifier(requested: str | None = None) -> str:
+async def find_trusted_identifier(requested: str | None = None) -> str:
+    """Find a device this computer already trusts, over USB or the local network."""
     from pymobiledevice3.usbmux import list_devices
 
-    devices = [device.serial for device in await list_devices() if device.is_usb]
+    found = await list_devices()
+    waited = 0
+    while waited < DISCOVERY_WAIT and (not found or (requested and requested not in [d.serial for d in found])):
+        await asyncio.sleep(2)
+        waited += 2
+        found = await list_devices()
+    devices = list(dict.fromkeys(device.serial for device in found))
     if requested:
         if requested not in devices:
-            raise SetupError(f"USB device {requested!r} is not connected")
+            raise SetupError(f"device {requested!r} is not visible to this computer")
         return requested
     if not devices:
-        raise SetupError("no USB iPhone or iPad found; connect and unlock the device first")
+        raise SetupError(
+            "no trusted iPhone or iPad found; pair it with this computer in Xcode (Window > Devices and Simulators) "
+            "or connect it by USB, then unlock it"
+        )
+    usb = list(dict.fromkeys(device.serial for device in found if device.is_usb))
+    if len(usb) == 1:
+        return usb[0]
     if len(devices) > 1:
-        raise SetupError("multiple USB devices found; choose one with --udid")
+        raise SetupError(f"multiple devices found; choose one with --udid: {', '.join(devices)}")
     return devices[0]
+
+
+def export_bundle(device: Device, output: Path) -> None:
+    """Write everything another computer needs to control this device. The file is a credential."""
+    from pymobiledevice3.pair_records import iter_remote_pair_records_by_identifier
+
+    record = next((path for found, path, _ in iter_remote_pair_records_by_identifier() if found == device.identifier), None)
+    if record is None:
+        raise SetupError(f"no RemotePairing record for {device.name!r}; run `ios-remote setup` first")
+    payload = {
+        "format": BUNDLE_FORMAT,
+        "name": device.name,
+        "host": device.host,
+        "port": device.port,
+        "identifier": device.identifier,
+        "host_id": device.host_id or current_host_id(),
+        "record": base64.b64encode(record.read_bytes()).decode(),
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as bundle:
+        json.dump(payload, bundle)
+    output.chmod(0o600)
+
+
+def import_bundle(source: Path, host: str | None = None, force: bool = False) -> Device:
+    """Install a bundle from `export_bundle` and return the device it describes."""
+    from pymobiledevice3.common import get_home_folder
+    from pymobiledevice3.pair_records import PAIRING_RECORD_EXT, get_remote_pairing_record_filename
+
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    if payload.get("format") != BUNDLE_FORMAT:
+        raise SetupError(f"{source} is not a bundle this version can read")
+    identifier = payload["identifier"]
+    record = base64.b64decode(payload["record"])
+    target = get_home_folder() / f"{get_remote_pairing_record_filename(identifier)}.{PAIRING_RECORD_EXT}"
+    if target.exists() and target.read_bytes() != record and not force:
+        raise SetupError(f"this computer already has a different pairing for {identifier}; use --force to replace it")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "wb") as stored:
+        stored.write(record)
+    target.chmod(0o600)
+    return Device(payload["name"], host or payload["host"], identifier, payload["port"], payload["host_id"])
 
 
 def bootstrap_remote_pairing(identifier: str) -> None:
@@ -72,11 +139,11 @@ def bootstrap_remote_pairing(identifier: str) -> None:
         completed = subprocess.run(command, check=False, text=True, capture_output=True, timeout=PAIRING_TIMEOUT)
     except subprocess.TimeoutExpired:
         raise SetupError(
-            f"USB RemotePairing timed out after {PAIRING_TIMEOUT}s. Unlock the device, accept Trust if prompted, and retry."
+            f"RemotePairing timed out after {PAIRING_TIMEOUT}s. Unlock the device, accept Trust if prompted, and retry."
         ) from None
     if completed.returncode:
         raise SetupError(
-            "USB RemotePairing failed. Unlock the device, accept Trust if prompted, and retry. "
+            "RemotePairing failed. Unlock the device, accept Trust if prompted, and retry. "
             f"Reason: {failure_reason(completed.stderr)}"
         )
     if not has_pair_record(identifier):

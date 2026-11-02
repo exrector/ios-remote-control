@@ -2,12 +2,21 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from .config import Device, load_devices, save_devices, validate_port
 from .device import PairingRequiredError, RemoteDevice, run
-from .onboarding import SetupError, bootstrap_remote_pairing, current_host_id, find_usb_identifier, paired_identifiers
+from .onboarding import (
+    SetupError,
+    bootstrap_remote_pairing,
+    current_host_id,
+    export_bundle,
+    find_trusted_identifier,
+    import_bundle,
+    paired_identifiers,
+)
 
 
 def emit(payload: dict[str, Any]) -> None:
@@ -35,6 +44,30 @@ def add_device(args: argparse.Namespace) -> None:
     devices[args.name] = Device(args.name, args.host, args.identifier, args.port, args.host_id or current_host_id())
     save_devices(devices)
     emit({"status": "saved", "device": args.name, "host": args.host, "port": args.port})
+
+
+def set_host(args: argparse.Namespace) -> None:
+    devices = load_devices()
+    device = selected_device(args.name)
+    devices[args.name] = replace(device, host=args.host)
+    save_devices(devices)
+    emit({"status": "saved", "device": args.name, "host": args.host})
+
+
+def export_device(args: argparse.Namespace) -> None:
+    output = Path(args.output).expanduser().resolve()
+    export_bundle(selected_device(args.name), output)
+    emit({"status": "exported", "device": args.name, "path": str(output), "warning": "this file gives control of the device"})
+
+
+def import_device(args: argparse.Namespace) -> None:
+    device = import_bundle(Path(args.path).expanduser(), args.host, args.force)
+    devices = load_devices()
+    if args.name:
+        device = replace(device, name=args.name)
+    devices[device.name] = device
+    save_devices(devices)
+    emit({"status": "imported", "device": device.name, "host": device.host, "port": device.port})
 
 
 def remove_device(args: argparse.Namespace) -> None:
@@ -65,15 +98,15 @@ def list_pairs(_: argparse.Namespace) -> None:
     emit({"identifiers": paired_identifiers()})
 
 
-def pair_usb(args: argparse.Namespace) -> None:
-    identifier = run(find_usb_identifier(args.udid))
+def pair_device(args: argparse.Namespace) -> None:
+    identifier = run(find_trusted_identifier(args.udid))
     bootstrap_remote_pairing(identifier)
     emit({"status": "paired", "identifier": identifier})
 
 
 def setup(args: argparse.Namespace) -> None:
     validate_port(args.port)
-    identifier = run(find_usb_identifier(args.udid))
+    identifier = run(find_trusted_identifier(args.udid))
     bootstrap_remote_pairing(identifier)
     devices = load_devices()
     device = Device(args.name, args.host, identifier, args.port, current_host_id())
@@ -164,17 +197,19 @@ def parser() -> argparse.ArgumentParser:
     )
     commands = root.add_subparsers(dest="command", required=True)
 
-    pair = commands.add_parser("pair-usb", help="bootstrap RemotePairing through an already trusted USB connection")
+    pair = commands.add_parser(
+        "pair", aliases=["pair-usb"], help="create a RemotePairing record through an already trusted connection"
+    )
     pair.add_argument("--udid")
-    pair.set_defaults(handler=pair_usb)
+    pair.set_defaults(handler=pair_device)
 
     setup_command = commands.add_parser(
-        "setup", help="pair one USB device, save its remote host, and verify the complete connection"
+        "setup", help="pair one trusted device, save its remote host, and verify the complete connection"
     )
     setup_command.add_argument("name", help="local alias for the device")
     setup_command.add_argument("--host", required=True, help="Tailscale name, IP address, or other routable host")
     setup_command.add_argument("--port", type=int, default=49152)
-    setup_command.add_argument("--udid", help="required only when multiple USB devices are connected")
+    setup_command.add_argument("--udid", help="required only when several devices are visible")
     setup_command.add_argument("--skip-verify", action="store_true")
     setup_command.set_defaults(handler=setup)
 
@@ -188,6 +223,23 @@ def parser() -> argparse.ArgumentParser:
     add.add_argument("--port", type=int, default=49152)
     add.add_argument("--host-id", help="identity the pairing was made with; defaults to this computer's")
     add.set_defaults(handler=add_device)
+
+    host = commands.add_parser("set-host", help="change the address of a saved device, such as to its Tailscale name")
+    host.add_argument("name")
+    host.add_argument("host")
+    host.set_defaults(handler=set_host)
+
+    export = commands.add_parser("export", help="save a device's pairing and settings to a file for another computer")
+    export.add_argument("name")
+    export.add_argument("output")
+    export.set_defaults(handler=export_device)
+
+    import_command = commands.add_parser("import", help="install a file made by export")
+    import_command.add_argument("path")
+    import_command.add_argument("--name", help="save under this alias instead of the original one")
+    import_command.add_argument("--host", help="reach the device at this address, such as its Tailscale name")
+    import_command.add_argument("--force", action="store_true", help="replace a different pairing for this device")
+    import_command.set_defaults(handler=import_device)
 
     listing = commands.add_parser("list", help="list configured device aliases")
     listing.set_defaults(handler=list_devices)

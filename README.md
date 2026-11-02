@@ -10,22 +10,24 @@ Apple's normal tooling discovers devices on the local network with Bonjour. That
 
 ### What has been verified
 
-| Tested on a physical iPad 6th generation, iPadOS 17.7.11 | Result |
-| --- | --- |
-| Screenshots, app launch, tap, swipe, and Home over a direct Tailscale path | Works, 2–3 seconds per command |
-| Commands from a computer in another country over a relayed Tailscale path (DERP) | Works, about 9 seconds per command |
-| Touch input in all four orientations | Correct |
-| First pairing from a new computer over Tailscale or local Wi-Fi | Refused by iOS |
-| A pairing moved to another computer | Works with the original identity |
+| Test | Device | Result |
+| --- | --- | --- |
+| Pairing with no cable, on the same Wi-Fi, on a device the Mac already trusts | iPhone, iOS 27.2 | Works |
+| `info` and screenshots on a locked screen, on the same Wi-Fi | iPhone, iOS 27.2 | Works |
+| Moving the setup to a new home folder and hostname with `export` and `import` | iPhone, iOS 27.2 | Works |
+| Screenshots, app launch, tap, swipe, and Home over a direct Tailscale path | iPad, iPadOS 17.7.11 | Works, 2–3 seconds per command |
+| Commands from another country over a relayed Tailscale path (DERP) | iPad, iPadOS 17.7.11 | Works, about 9 seconds per command |
+| Touch input in all four orientations | iPad, iPadOS 17.7.11 | Correct |
+| Pairing a new computer directly over the network, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS |
 
-Not verified yet: iPhones, iOS newer than 17.7, the lock screen, and a full first-time `setup` over USB with this release.
+Not verified yet: an iPhone over Tailscale, touch input on iPhones, and `export`/`import` between two physical computers with this release.
 
 ## Requirements
 
 - macOS, the only platform tested so far
 - Python 3.11 or newer, with `uv` or `pipx` to install the command
 - An iPhone or iPad supported by `pymobiledevice3`, with Developer Mode on
-- A person with the device for the first pairing
+- A Mac that already trusts the device, as shown in Xcode under **Window > Devices and Simulators**
 - A route from the computer to the device, such as both devices joining the same Tailnet
 - The RemotePairing TCP port reachable on the device; the usual advertised port is `49152`, but it is configurable
 
@@ -59,49 +61,51 @@ uv tool install git+https://github.com/exrector/ios-remote-control
 
 `pipx install git+https://github.com/exrector/ios-remote-control` works too. From a clone, use `uv tool install .`.
 
-## Pair once, with the device in hand
+## Set up
 
-Developer Mode is required for CoreDevice services, but it does **not** authorize a new computer by itself. Over the network, iOS closes the connection as soon as an unpaired computer asks to pair. This happened both over Tailscale and on the same Wi-Fi, so first pairing cannot be done from afar.
+### Step 1: pair on the same network
 
-Once paired, the device can be anywhere on your Tailnet.
-
-Connect and unlock the device, tap **Trust** if iOS asks, then run:
+Put the computer and the device on the same Wi-Fi. Tailscale is not needed yet. If Xcode already shows the device as paired, no cable is needed:
 
 ```sh
-ios-remote setup home-ipad --host ipad.example-tailnet.ts.net
+ios-remote setup home-ipad --host DEVICE-NAME.local
 ```
 
-`setup` finds the single USB-connected device, performs the promptless RemotePairing bootstrap over the already trusted lockdown connection, stores the remote host, and verifies the complete IP path. If the computer has never trusted this device, iOS first shows its normal **Trust This Computer?** prompt. With multiple USB devices attached, add `--udid DEVICE_IDENTIFIER`.
+`setup` uses the trust your Mac already has to create a separate pairing for this tool, saves the device, and checks the connection. If several devices are visible, add `--udid DEVICE_IDENTIFIER`.
 
-For manual or diagnostic use, the underlying steps remain available:
+If `setup` finds no trusted device, pair it in Xcode first. Trust has to be established with someone at the device: iOS refuses a new computer that asks directly over the network. `pymobiledevice3` documents a no-cable way for iOS 27, using a code in **Settings > Developer > Paired Macs**. On older versions you may need a cable once.
+
+### Step 2: switch to Tailscale
+
+Turn on Tailscale on both devices, then give the tool the device's Tailscale name:
 
 ```sh
-ios-remote pair-usb
-ios-remote list-pairs
-ios-remote add home-ipad --host ipad.example-tailnet.ts.net --identifier DEVICE_IDENTIFIER
+ios-remote set-host home-ipad ipad.example-tailnet.ts.net
+ios-remote doctor --device home-ipad
 ```
 
-Pairing records contain credentials and stay in pymobiledevice3's local data directory. Never copy them into a repository or send them to an agent.
+From now on the device can be anywhere on your Tailnet.
 
-The alias file is stored at `~/.config/ios-remote-control/devices.json` with mode `0600`. Set `IOS_REMOTE_CONFIG` to use a different path.
-
-iOS 27 adds pairing without a cable: `pymobiledevice3` documents `remote pair-host`, with the device on the same Wi-Fi as the computer and a code entered in **Settings > Developer > Paired Macs**. It still needs a person with the device. It has not been tested with this project.
-
-### Your computer's identity
-
-iOS knows your computer by an identity that `pymobiledevice3` derives from its hostname. Aliases made with this version save that identity, so a pairing keeps working if the hostname changes. An alias made with an earlier version does not have it; run `ios-remote add` again to save it.
-
-### Moving a pairing to another computer
-
-If someone pairs the device for you, or you want to control it from a second computer:
-
-1. On the computer that made the pairing, run `ios-remote list` and note `identifier` and `host_id`.
-2. Copy `~/.pymobiledevice3/remote_IDENTIFIER.plist` to the same path on the new computer over a private channel, and run `chmod 600` on it. Anyone holding this file can control the device.
-3. On the new computer, run:
+### Step 3, optional: move the setup to another computer
 
 ```sh
-ios-remote add home-ipad --host ipad.example-tailnet.ts.net --identifier IDENTIFIER --host-id HOST_ID
+ios-remote export home-ipad home-ipad.json
 ```
+
+Copy the file over a private channel, then on the other computer:
+
+```sh
+ios-remote import home-ipad.json --host ipad.example-tailnet.ts.net
+```
+
+The file gives full control of the device. Delete it after importing, and never commit it or send it to an agent.
+
+### Good to know
+
+- Each device is stored in `~/.config/ios-remote-control/devices.json` with mode `0600`. Set `IOS_REMOTE_CONFIG` to use a different path.
+- Pairing records are credentials and stay in `pymobiledevice3`'s data folder.
+- iOS knows your computer by an identity derived from its hostname. Aliases made with this version save it, so pairing survives a rename. For an older alias, run `ios-remote add` again.
+- Removing a device from Xcode can also cut off this tool. This happened on an iPad, so pair it again before relying on it.
 
 ## Use
 
@@ -130,7 +134,7 @@ For reliable automation, always use an observe-act-verify loop:
 
 The device can be controlled unattended only while it is paired, online, and unlocked. Someone has to be with it to:
 
-- do the first pairing;
+- establish the first trust between the computer and the device;
 - unlock it, because this tool does not enter a passcode;
 - answer Touch ID or Face ID prompts, which touch input cannot satisfy;
 - bring it back after a reboot or when Tailscale has stopped running on it.

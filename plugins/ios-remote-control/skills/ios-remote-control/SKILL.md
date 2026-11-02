@@ -31,13 +31,21 @@ Start with `ios-remote list`, then check the selected alias with:
 ios-remote doctor --device ALIAS
 ```
 
-Developer Mode is necessary but does not establish trust. If the device is not configured or lacks a RemotePairing record, a person must be with the device for the first pairing. Ask the user to connect and unlock it over USB, then run:
+Developer Mode is necessary but does not establish trust. If the device has no RemotePairing record, set it up with the computer and device on the same Wi-Fi. Tailscale is not needed for this step:
 
 ```sh
-ios-remote setup ALIAS --host HOST
+ios-remote setup ALIAS --host DEVICE-NAME.local
 ```
 
-This uses the single connected USB device, bootstraps RemotePairing, stores the alias, and verifies the remote path. If several USB devices are connected, select one with `--udid`. Never display a pairing record, and copy one only when the user asks to move a pairing to another of their computers. First pairing cannot be done remotely: iOS closes the connection when a new computer asks to pair over the network.
+This uses the trust the Mac already has, over Wi-Fi or USB, to create the record, stores the alias, and verifies the connection. No cable is needed if Xcode shows the device as paired. If several devices are visible, select one with `--udid`. If none is found, ask the user to pair the device in Xcode under Window > Devices and Simulators. A new computer cannot pair directly over the network: iOS closes the connection.
+
+Then switch to the device's Tailscale name:
+
+```sh
+ios-remote set-host ALIAS TAILSCALE-NAME
+```
+
+To control the device from another computer, use `ios-remote export ALIAS FILE` and, on that computer, `ios-remote import FILE --host TAILSCALE-NAME`. Do this only when the user asks. The file gives full control of the device: never display it, commit it, or leave it behind.
 
 ## Operate
 
@@ -69,4 +77,5 @@ Screenshots can contain private information. Keep them local, use temporary or u
 - A locked device, a Touch ID or Face ID prompt, or a device that was rebooted needs a person. Report this to the user; do not try to get around it.
 - A connection failure usually means the device is asleep/offline, the host or port is stale, Tailscale has no route, or the RemotePairing record is missing.
 - Do not replace direct IP routing with public port forwarding. Prefer a private Tailnet or equivalent trusted network.
-- "The RemotePairing record was rejected" can mean this computer's name changed or the record came from another computer. Restore its identity with `ios-remote add ALIAS --host HOST --identifier ID --host-id HOST_ID`, using the `host_id` from `ios-remote list` on the computer that made the pairing. If that does not help, reconnect over USB and run `ios-remote pair-usb`; do not delete existing pairing records without explicit approval.
+- "The RemotePairing record was rejected" can mean this computer's name changed or the record came from another computer. Use `ios-remote export` and `ios-remote import` to move a setup. If that does not help, run `ios-remote pair` while the Mac trusts the device. Do not delete existing pairing records without explicit approval.
+- Removing a device from Xcode can also cut off this tool. Tell the user before suggesting it.

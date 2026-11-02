@@ -70,7 +70,7 @@ class RemoteDevice:
 
         if not has_pair_record(self.device.identifier):
             raise PairingRequiredError(
-                "no local RemotePairing record; connect the unlocked device over USB and run "
+                "no local RemotePairing record; with the device trusted by this computer and unlocked, run "
                 f"`ios-remote setup {self.device.name} --host {self.device.host}`"
             )
 
@@ -88,8 +88,8 @@ class RemoteDevice:
             if not hasattr(service, "client_cip"):
                 raise PairingRequiredError(
                     "the RemotePairing record was rejected; if this computer's name changed or the record came from "
-                    "another computer, set its identity with `ios-remote add --host-id`; otherwise reconnect over USB "
-                    "and run `ios-remote pair-usb`"
+                    "another computer, set its identity with `ios-remote add --host-id`; otherwise run `ios-remote pair` "
+                    "while this computer trusts the device"
                 )
 
             previous_use_userspace = tunnel_service.USE_USERSPACE_TUNNEL
