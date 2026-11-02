@@ -19,6 +19,8 @@ Apple's normal tooling discovers devices on the local network with Bonjour. That
 | Commands from another country over a relayed Tailscale path (DERP) | iPad, iPadOS 17.7.11 | Works, about 9 seconds per command |
 | Touch input in all four orientations | iPad, iPadOS 17.7.11 | Correct |
 | Pairing a new computer directly over the network, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS |
+| Pairing a new computer through `lockdownd` over Tailscale, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS: it withholds the key that pairing needs |
+| Finding a device in Xcode tools after removing it from Xcode, with no cable | iPad, iPadOS 17.7.11 | Not found |
 
 Not verified yet: an iPhone over Tailscale, touch input on iPhones, and `export`/`import` between two physical computers with this release.
 
@@ -73,7 +75,7 @@ ios-remote setup home-ipad --host DEVICE-NAME.local
 
 `setup` uses the trust your Mac already has to create a separate pairing for this tool, saves the device, and checks the connection. If several devices are visible, add `--udid DEVICE_IDENTIFIER`.
 
-If `setup` finds no trusted device, pair it in Xcode first. Trust has to be established with someone at the device: iOS refuses a new computer that asks directly over the network. `pymobiledevice3` documents a no-cable way for iOS 27, using a code in **Settings > Developer > Paired Macs**. On older versions you may need a cable once.
+If `setup` finds no trusted device, pair it in Xcode first. Trust has to be established with someone at the device: iOS refuses a new computer that asks directly over the network. On iPadOS 17.7 every network route we tried was refused, so expect to need a cable once. `pymobiledevice3` documents a no-cable way for iOS 27, using a code in **Settings > Developer > Paired Macs**, but in our one test the computer did not appear on the device.
 
 ### Step 2: switch to Tailscale
 
