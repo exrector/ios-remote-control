@@ -99,7 +99,7 @@ def keypad_point(digit: str, width: int, height: int) -> tuple[int, int]:
 def validate_passcode(passcode: str) -> None:
     """Raise ValueError unless this is a passcode the keypad can enter. The message never contains it."""
     if not passcode.isascii() or not passcode.isdigit() or len(passcode) not in PASSCODE_LENGTHS:
-        raise ValueError("only 4-digit and 6-digit numeric passcodes are supported")
+        raise ValueError("only 4-digit and 6-digit numeric passcodes are supported; nothing was sent to the device")
 
 
 def _ring_brightness(pixels: Any, x: int, y: int, radius: float, width: int, height: int) -> float:

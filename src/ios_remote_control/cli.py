@@ -208,7 +208,7 @@ def unlock(args: argparse.Namespace) -> None:
     print("Type UNLOCK to continue: ", end="", file=sys.stderr, flush=True)
     if input().strip() != "UNLOCK":
         raise ValueError("not confirmed; nothing was sent to the device")
-    outcome = run(RemoteDevice(selected_device(args.device)).unlock(getpass.getpass("Passcode (hidden): ")))
+    outcome = run(RemoteDevice(selected_device(args.device)).unlock(getpass.getpass("Passcode (hidden): ").strip()))
     emit({"status": outcome, "device": args.device})
 
 
