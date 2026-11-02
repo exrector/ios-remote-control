@@ -31,13 +31,15 @@ Start with `ios-remote list`, then check the selected alias with:
 ios-remote doctor --device ALIAS
 ```
 
-Developer Mode is necessary but does not establish trust. If the device has no RemotePairing record, set it up with the computer and device on the same Wi-Fi. Tailscale is not needed for this step:
+**The device must already be paired with the user's Mac.** This tool cannot create the first pairing, and neither can you: do not try. Check this first, in Xcode or Device Hub, and if it is not paired, ask the user to pair it. On iPadOS 17.7 that means a cable. Never remove a device from Xcode or Device Hub: it deletes the trust this tool depends on.
+
+Developer Mode is necessary but does not establish trust. If the paired device has no RemotePairing record, connect it by cable or put the computer and device on the same Wi-Fi, then run:
 
 ```sh
 ios-remote setup ALIAS --host DEVICE-NAME.local
 ```
 
-This uses the trust the Mac already has, over Wi-Fi or USB, to create the record, stores the alias, and verifies the connection. No cable is needed if Xcode shows the device as paired. If several devices are visible, select one with `--udid`. If none is found, ask the user to pair the device in Xcode under Window > Devices and Simulators. A new computer cannot pair directly over the network: iOS closes the connection.
+This uses the trust the Mac already has to create the record, stores the alias, and verifies the connection. If several devices are visible, select one with `--udid`. If none is found, the device is not paired with this Mac yet, so ask the user to pair it. A new computer cannot pair directly over the network: iOS closes the connection.
 
 Then switch to the device's Tailscale name:
 

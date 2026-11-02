@@ -4,6 +4,17 @@ Control a paired physical iPhone or iPad over any routable IP connection, includ
 
 This project is a thin orchestration layer over [pymobiledevice3](https://github.com/doronz88/pymobiledevice3). It does not reimplement Apple's pairing or CoreDevice protocols.
 
+## First condition: the device must already be paired with your Mac
+
+**This tool does not create the first pairing.** Pair the device with your Mac yourself before you start. Check that Xcode or Device Hub shows it as paired.
+
+| Device | How to pair it the first time |
+| --- | --- |
+| iPad on iPadOS 17.7 | By cable. Every network route we tried was refused. |
+| Newer iOS versions | Device Hub has **File > Pair Nearby Device** for iOS 27 and later. We have not completed this route. Use a cable if it does not work. |
+
+Do not remove the device from Xcode or Device Hub afterwards. That deletes the trust this tool depends on.
+
 ## What it solves
 
 Apple's normal tooling discovers devices on the local network with Bonjour. That discovery does not cross most routed networks. `ios-remote-control` skips Bonjour after pairing and connects directly to the device's reachable hostname or IP address.
@@ -12,7 +23,8 @@ Apple's normal tooling discovers devices on the local network with Bonjour. That
 
 | Test | Device | Result |
 | --- | --- | --- |
-| Pairing with no cable, on the same Wi-Fi, on a device the Mac already trusts | iPhone, iOS 27.2 | Works |
+| First pairing by cable, then `setup` and control over Tailscale | iPad, iPadOS 17.7.11 | Works |
+| `setup` over Wi-Fi with no cable, on a device already paired with the Mac | iPhone, iOS 27.2 | Works |
 | `info` and screenshots on a locked screen, on the same Wi-Fi | iPhone, iOS 27.2 | Works |
 | Moving the setup to a new home folder and hostname with `export` and `import` | iPhone, iOS 27.2 | Works |
 | Screenshots, app launch, tap, swipe, and Home over a direct Tailscale path | iPad, iPadOS 17.7.11 | Works, 2–3 seconds per command |
@@ -26,10 +38,10 @@ Not verified yet: an iPhone over Tailscale, touch input on iPhones, and `export`
 
 ## Requirements
 
+- A device already paired with your Mac, as shown in Xcode or Device Hub
 - macOS, the only platform tested so far
 - Python 3.11 or newer, with `uv` or `pipx` to install the command
 - An iPhone or iPad supported by `pymobiledevice3`, with Developer Mode on
-- A Mac that already trusts the device, as shown in Xcode under **Window > Devices and Simulators**
 - A route from the computer to the device, such as both devices joining the same Tailnet
 - The RemotePairing TCP port reachable on the device; the usual advertised port is `49152`, but it is configurable
 
@@ -65,9 +77,9 @@ uv tool install git+https://github.com/exrector/ios-remote-control
 
 ## Set up
 
-### Step 1: pair on the same network
+### Step 1: create this tool's pairing
 
-Put the computer and the device on the same Wi-Fi. Tailscale is not needed yet. If Xcode already shows the device as paired, no cable is needed:
+With the device already paired with your Mac, put both on the same Wi-Fi or connect the cable, then run:
 
 ```sh
 ios-remote setup home-ipad --host DEVICE-NAME.local
@@ -75,7 +87,7 @@ ios-remote setup home-ipad --host DEVICE-NAME.local
 
 `setup` uses the trust your Mac already has to create a separate pairing for this tool, saves the device, and checks the connection. If several devices are visible, add `--udid DEVICE_IDENTIFIER`.
 
-If `setup` finds no trusted device, pair it in Xcode first. Trust has to be established with someone at the device: iOS refuses a new computer that asks directly over the network. On iPadOS 17.7 every network route we tried was refused, so expect to need a cable once. `pymobiledevice3` documents a no-cable way for iOS 27, using a code in **Settings > Developer > Paired Macs**, but in our one test the computer did not appear on the device.
+If `setup` finds no trusted device, the device is not paired with this Mac yet. See the first condition above.
 
 ### Step 2: switch to Tailscale
 

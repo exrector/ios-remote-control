@@ -11,7 +11,7 @@
   "interface": {
     "displayName": "iOS Remote Control",
     "shortDescription": "Control a paired iPhone or iPad over Tailscale",
-    "longDescription": "Take screenshots, launch apps, tap, swipe, and press Home on a paired physical iPhone or iPad from anywhere on your Tailscale network. First pairing happens on the same Wi-Fi. Requires the ios-remote command-line tool, which the skill helps install.",
+    "longDescription": "Take screenshots, launch apps, tap, swipe, and press Home on a paired physical iPhone or iPad from anywhere on your Tailscale network. The device must already be paired with your Mac. Requires the ios-remote command-line tool, which the skill helps install.",
     "developerName": "exrector",
     "category": "Developer Tools",
     "capabilities": ["Interactive", "Read", "Write"],
