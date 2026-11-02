@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .config import Device, load_devices, save_devices
+from .config import Device, load_devices, save_devices, validate_port
 from .device import PairingRequiredError, RemoteDevice, run
 from .onboarding import SetupError, bootstrap_remote_pairing, find_usb_identifier, paired_identifiers
 
@@ -14,16 +14,23 @@ def emit(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False))
 
 
+def error_message(error: Exception) -> str:
+    if isinstance(error, TimeoutError):
+        return str(error) or "connection timed out; the device may be asleep, offline, or unreachable"
+    return str(error) or "device operation failed"
+
+
 def selected_device(name: str) -> Device:
     devices = load_devices()
     try:
         return devices[name]
     except KeyError as error:
         choices = ", ".join(sorted(devices)) or "none configured"
-        raise SystemExit(f"unknown device {name!r}; configured: {choices}") from error
+        raise ValueError(f"unknown device {name!r}; configured: {choices}") from error
 
 
 def add_device(args: argparse.Namespace) -> None:
+    validate_port(args.port)
     devices = load_devices()
     devices[args.name] = Device(args.name, args.host, args.identifier, args.port)
     save_devices(devices)
@@ -33,7 +40,7 @@ def add_device(args: argparse.Namespace) -> None:
 def remove_device(args: argparse.Namespace) -> None:
     devices = load_devices()
     if args.name not in devices:
-        raise SystemExit(f"unknown device {args.name!r}")
+        raise ValueError(f"unknown device {args.name!r}")
     del devices[args.name]
     save_devices(devices)
     emit({"status": "removed", "device": args.name})
@@ -59,6 +66,7 @@ def pair_usb(args: argparse.Namespace) -> None:
 
 
 def setup(args: argparse.Namespace) -> None:
+    validate_port(args.port)
     identifier = run(find_usb_identifier(args.udid))
     bootstrap_remote_pairing(identifier)
     devices = load_devices()
@@ -91,14 +99,16 @@ def doctor(args: argparse.Namespace) -> None:
         result["status"] = "needs_usb_pairing"
         result["next"] = f"ios-remote setup {device.name} --host {device.host}"
         emit(result)
-        return
+        raise SystemExit(1)
     try:
         result["connection"] = run(RemoteDevice(device).info())
         result["status"] = "ready"
     except Exception as error:
         result["status"] = "unreachable"
         result["error_type"] = type(error).__name__
-        result["error"] = str(error) or "connection failed"
+        result["error"] = error_message(error)
+        emit(result)
+        raise SystemExit(1) from error
     emit(result)
 
 
@@ -115,6 +125,11 @@ def screenshot(args: argparse.Namespace) -> None:
 def launch(args: argparse.Namespace) -> None:
     run(RemoteDevice(selected_device(args.device)).launch(args.bundle_id))
     emit({"status": "launched", "bundle_id": args.bundle_id})
+
+
+def home(args: argparse.Namespace) -> None:
+    run(RemoteDevice(selected_device(args.device)).home())
+    emit({"status": "pressed", "button": "home"})
 
 
 def tap(args: argparse.Namespace) -> None:
@@ -182,6 +197,7 @@ def parser() -> argparse.ArgumentParser:
         ("info", info, "show device information"),
         ("screenshot", screenshot, "capture the current screen"),
         ("launch", launch, "launch an application by bundle identifier"),
+        ("home", home, "press the Home button"),
         ("tap", tap, "tap screenshot pixel coordinates"),
         ("swipe", swipe, "swipe between screenshot pixel coordinates"),
     ]:
@@ -213,14 +229,14 @@ def main() -> None:
     except KeyboardInterrupt:
         raise SystemExit(130) from None
     except (ConnectionError, OSError, PairingRequiredError, SetupError, TimeoutError, ValueError) as error:
-        emit({"status": "error", "error": str(error), "type": type(error).__name__})
+        emit({"status": "error", "error": error_message(error), "type": type(error).__name__})
         raise SystemExit(1) from error
     except Exception as error:
         from pymobiledevice3.exceptions import PyMobileDevice3Exception
 
         if not isinstance(error, PyMobileDevice3Exception):
             raise
-        emit({"status": "error", "error": str(error) or "device operation failed", "type": type(error).__name__})
+        emit({"status": "error", "error": error_message(error), "type": type(error).__name__})
         raise SystemExit(1) from error
 
 

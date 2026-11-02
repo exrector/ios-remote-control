@@ -30,12 +30,15 @@ Use an observe-act-verify loop:
 ```sh
 ios-remote screenshot --device ALIAS /absolute/path/before.png
 ios-remote launch --device ALIAS com.example.app
+ios-remote home --device ALIAS
 ios-remote tap --device ALIAS X Y
 ios-remote swipe --device ALIAS X1 Y1 X2 Y2
 ios-remote screenshot --device ALIAS /absolute/path/after.png
 ```
 
-Coordinates are pixels in the most recent screenshot. Inspect a fresh screenshot before selecting them. Perform one UI action at a time and verify the result with another screenshot. A successful command only proves delivery; the screenshot proves the UI outcome.
+Coordinates are pixels in the most recent screenshot, as it is displayed; the CLI handles device rotation. If your image viewer downscaled the screenshot, convert back using the `width` and `height` the command reported. Inspect a fresh screenshot before selecting them. Run commands one at a time. Perform one UI action at a time and verify the result with another screenshot. A successful command only proves delivery; the screenshot proves the UI outcome.
+
+To leave an app, use `ios-remote home`. Never launch `com.apple.springboard`: it restarts the home screen, and the CLI refuses it.
 
 Treat launching an app or manipulating its UI as a device mutation requiring the user's authorization. Do not type secrets, approve purchases, change accounts, install profiles, delete data, or alter security settings unless the user explicitly requests that exact action.
 
@@ -43,8 +46,9 @@ Screenshots can contain private information. Keep them local, use temporary or u
 
 ## Diagnose
 
-- `ios-remote doctor --device ALIAS` reports whether configuration, pairing, and connectivity are ready.
-- `ios-remote info --device ALIAS` checks the complete RemotePairing and RSD path.
+- `ios-remote doctor --device ALIAS` reports whether configuration, pairing, and connectivity are ready, and exits with status 1 otherwise.
+- `ios-remote info --device ALIAS` checks the complete RemotePairing and RSD path and reports orientation, backlight, and `passcode_required`.
+- A locked device, a Touch ID or Face ID prompt, or a device that was rebooted needs a person. Report this to the user; do not try to get around it.
 - A connection failure usually means the device is asleep/offline, the host or port is stale, Tailscale has no route, or the RemotePairing record is missing.
 - Do not replace direct IP routing with public port forwarding. Prefer a private Tailnet or equivalent trusted network.
 - If pairing has gone stale, reconnect over USB and run `ios-remote pair-usb`; do not delete existing pairing records without explicit approval.

@@ -9,6 +9,14 @@ from typing import AsyncIterator, Any
 from .config import Device
 from .onboarding import has_pair_record
 
+# pymobiledevice3 gives up after one second, too short for a relayed Tailscale path.
+CONNECT_TIMEOUT = 10
+HOME_BUTTON = (0x0C, 0x40)
+HID_MAX = 65535
+ROTATIONS = {"rot0": 0, "rot90": 90, "rot180": 180, "rot270": 270}
+# Launching SpringBoard restarts the home screen instead of opening it.
+UNLAUNCHABLE_BUNDLES = {"com.apple.springboard"}
+
 
 class PairingRequiredError(RuntimeError):
     pass
@@ -26,6 +34,27 @@ def pixel_to_hid(value: float, extent: int) -> int:
     if value < 0 or value > extent - 1:
         raise ValueError(f"coordinate {value} is outside 0..{extent - 1}")
     return round(value * 65535 / (extent - 1))
+
+
+def rotation_degrees(display_info: dict[str, Any]) -> int:
+    """Rotation of the primary display's interface relative to its native orientation."""
+    display = next(item for item in display_info["displays"] if item.get("primary"))
+    current = ROTATIONS[display["currentOrientation"]]
+    return (current - ROTATIONS[display.get("nativeOrientation", "rot0")]) % 360
+
+
+def screen_to_hid(x: float, y: float, width: int, height: int, rotation: int) -> tuple[int, int]:
+    """Map screenshot pixels to HID coordinates, which stay in the native orientation."""
+    if (rotation in (90, 270)) != (width > height):
+        raise ValueError(f"device reports rotation {rotation} but the screen is {width}x{height}; retry")
+    across, down = pixel_to_hid(x, width), pixel_to_hid(y, height)
+    if rotation == 90:
+        return down, HID_MAX - across
+    if rotation == 180:
+        return HID_MAX - across, HID_MAX - down
+    if rotation == 270:
+        return HID_MAX - down, across
+    return across, down
 
 
 class RemoteDevice:
@@ -47,7 +76,12 @@ class RemoteDevice:
 
         service = RemotePairingManualPairingService(self.device.identifier, self.device.host, self.device.port)
         try:
-            await service.connect(autopair=False)
+            previous_timeout = tunnel_service.TIMEOUT
+            tunnel_service.TIMEOUT = CONNECT_TIMEOUT
+            try:
+                await service.connect(autopair=False)
+            finally:
+                tunnel_service.TIMEOUT = previous_timeout
             if not hasattr(service, "client_cip"):
                 raise PairingRequiredError(
                     "the RemotePairing record was rejected; reconnect over USB and run `ios-remote pair-usb`"
@@ -85,10 +119,18 @@ class RemoteDevice:
             await service.close()
 
     async def info(self) -> dict[str, Any]:
+        from pymobiledevice3.remote.core_device.device_info import DeviceInfoService
+
         async with self.rsd() as rsd:
             properties = (rsd.peer_info or {}).get("Properties", {})
+            async with DeviceInfoService(rsd) as device_info:
+                display_info = await device_info.get_display_info()
             return {
-                "name": properties.get("DeviceName") or properties.get("Name"),
+                "orientation": display_info["orientation"]["currentDeviceOrientation"],
+                "rotation": rotation_degrees(display_info),
+                "backlight": display_info.get("backlightState"),
+                "passcode_required": await rsd.get_value(key="PasswordProtected"),
+                "alias": self.device.name,
                 "identifier": properties.get("UniqueDeviceID"),
                 "product": properties.get("ProductType"),
                 "os": properties.get("OSVersion"),
@@ -106,16 +148,32 @@ class RemoteDevice:
 
     async def screenshot(self, output: Path) -> tuple[int, int]:
         data = await self.screenshot_bytes()
+        dimensions = png_dimensions(data)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(data)
-        return png_dimensions(data)
+        return dimensions
 
     async def launch(self, bundle_id: str) -> None:
         from pymobiledevice3.remote.core_device.app_service import AppServiceService
 
+        if bundle_id in UNLAUNCHABLE_BUNDLES:
+            raise ValueError(f"launching {bundle_id} restarts the home screen; use `ios-remote home`")
         async with self.rsd() as rsd:
             async with AppServiceService(rsd) as apps:
                 await apps.launch_application(bundle_id)
+
+    async def home(self) -> None:
+        from pymobiledevice3.remote.core_device.hid_service import (
+            HID_BUTTON_STATE_DOWN,
+            HID_BUTTON_STATE_UP,
+            IndigoHIDService,
+        )
+
+        async with self.rsd() as rsd:
+            async with IndigoHIDService(rsd) as buttons:
+                await buttons.send_button(*HOME_BUTTON, HID_BUTTON_STATE_DOWN)
+                await asyncio.sleep(0.05)
+                await buttons.send_button(*HOME_BUTTON, HID_BUTTON_STATE_UP)
 
     async def _screen_size(self, rsd: Any) -> tuple[int, int]:
         from pymobiledevice3.remote.core_device.screen_capture_service import ScreenCaptureService
@@ -124,12 +182,20 @@ class RemoteDevice:
             response = await capture.capture_screenshot()
         return png_dimensions(response["image"])
 
+    async def _rotation(self, rsd: Any) -> int:
+        from pymobiledevice3.remote.core_device.device_info import DeviceInfoService
+
+        async with DeviceInfoService(rsd) as info:
+            return rotation_degrees(await info.get_display_info())
+
     async def tap(self, x: float, y: float, hold: float = 0.08) -> tuple[int, int]:
         from pymobiledevice3.remote.core_device.hid_service import UniversalHIDServiceService
 
+        if hold < 0:
+            raise ValueError("hold must not be negative")
         async with self.rsd() as rsd:
             width, height = await self._screen_size(rsd)
-            point = (pixel_to_hid(x, width), pixel_to_hid(y, height))
+            point = screen_to_hid(x, y, width, height, await self._rotation(rsd))
             async with UniversalHIDServiceService(rsd) as hid:
                 await hid.multi_tap([point], hold=hold)
             return width, height
@@ -145,13 +211,16 @@ class RemoteDevice:
     ) -> tuple[int, int]:
         from pymobiledevice3.remote.core_device.hid_service import UniversalHIDServiceService
 
+        if steps < 1:
+            raise ValueError("steps must be at least 1")
+        if duration <= 0:
+            raise ValueError("duration must be positive")
         async with self.rsd() as rsd:
             width, height = await self._screen_size(rsd)
+            rotation = await self._rotation(rsd)
             path = (
-                pixel_to_hid(x1, width),
-                pixel_to_hid(y1, height),
-                pixel_to_hid(x2, width),
-                pixel_to_hid(y2, height),
+                *screen_to_hid(x1, y1, width, height, rotation),
+                *screen_to_hid(x2, y2, width, height, rotation),
             )
             async with UniversalHIDServiceService(rsd) as hid:
                 await hid.multi_drag([path], duration=duration, steps=steps)
