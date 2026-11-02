@@ -8,7 +8,7 @@ This project is a thin orchestration layer over [pymobiledevice3](https://github
 
 Apple's normal tooling discovers devices on the local network with Bonjour. That discovery does not cross most routed networks. `ios-remote-control` skips Bonjour after pairing and connects directly to the device's reachable hostname or IP address.
 
-Verified on a physical iPad 6th generation running iPadOS 17.7.11 through Tailscale, with no root tunnel and no WebDriverAgent.
+Verified on a physical iPad 6th generation running iPadOS 17.7.11 in all four orientations, through a direct Tailscale path on the same local network, with no root tunnel and no WebDriverAgent. Newer iOS versions, iPhones, and relayed internet paths have not been verified.
 
 ## Requirements
 
@@ -23,10 +23,10 @@ The commands execute on your computer. A cloud chatbot cannot reach a private Ta
 ## Install
 
 ```sh
-python3 -m pip install .
+uv tool install .
 ```
 
-For an isolated installation, use `pipx install .` or `uv tool install .`.
+`pipx install .` works too. Plain `pip install .` needs a virtual environment on a Homebrew Python, which refuses system-wide installs.
 
 Developer Mode is required for CoreDevice services, but it does **not** authorize a new computer by itself. An unpaired client can reach the RemotePairing port, but iOS rejects the setup until trust has been established through an Apple-supported pairing path. The universal path for iOS 17+ is one initial USB connection.
 
@@ -59,11 +59,14 @@ ios-remote info --device home-ipad
 ios-remote doctor --device home-ipad
 ios-remote screenshot --device home-ipad screen.png
 ios-remote launch --device home-ipad com.apple.Home
-ios-remote tap --device home-ipad 768 1712
-ios-remote swipe --device home-ipad 768 1700 768 500
+ios-remote home --device home-ipad
+ios-remote tap --device home-ipad 500 700
+ios-remote swipe --device home-ipad 1500 800 500 800
 ```
 
-Tap and swipe coordinates are pixels in the current screenshot. The CLI captures the current screen internally and converts the pixel coordinates to CoreDevice HID coordinates.
+Tap and swipe coordinates are pixels in the current screenshot, in the orientation the screenshot shows. The CLI reads the display rotation from the device and converts the pixels to CoreDevice HID coordinates, which stay in the native orientation.
+
+`info` also reports `orientation`, `rotation`, `backlight`, and `passcode_required`. `doctor` exits with status 1 unless the device is ready. Run commands one at a time: parallel screen captures can fail.
 
 For reliable automation, always use an observe-act-verify loop:
 
@@ -71,6 +74,15 @@ For reliable automation, always use an observe-act-verify loop:
 2. Inspect the current state and choose coordinates.
 3. Perform one action.
 4. Capture another screenshot and verify the result.
+
+## When a person is still needed
+
+The device can be controlled unattended only while it is paired, online, and unlocked. Someone has to be with it to:
+
+- connect USB, unlock, and accept Trust for the first pairing;
+- unlock it, because this tool does not enter a passcode;
+- answer Touch ID or Face ID prompts, which touch input cannot satisfy;
+- bring it back after a reboot or when Tailscale has stopped running on it.
 
 ## Codex skill
 
@@ -83,7 +95,7 @@ This first release deliberately stays small:
 - direct connection to a saved host and port;
 - rootless userspace tunnel;
 - device information and PNG screenshots;
-- application launch by bundle identifier;
+- application launch by bundle identifier and the Home button;
 - single-finger tap and swipe.
 
 It does not provide unattended first-time trust, bypass the lock screen, expose the device publicly, or relay traffic through a hosted service. This is intentional: Developer Mode enables developer services but must not silently grant a new computer control of the device.

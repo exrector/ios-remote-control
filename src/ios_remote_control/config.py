@@ -14,6 +14,11 @@ class Device:
     port: int = 49152
 
 
+def validate_port(port: int) -> None:
+    if not 1 <= port <= 65535:
+        raise ValueError(f"port {port} is outside 1..65535")
+
+
 def config_path() -> Path:
     override = os.environ.get("IOS_REMOTE_CONFIG")
     if override:

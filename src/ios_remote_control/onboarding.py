@@ -5,6 +5,9 @@ import sys
 from typing import Any
 
 
+PAIRING_TIMEOUT = 120
+
+
 class SetupError(RuntimeError):
     pass
 
@@ -17,6 +20,19 @@ def paired_identifiers() -> list[str]:
 
 def has_pair_record(identifier: str) -> bool:
     return identifier in paired_identifiers()
+
+
+def protect_pair_record(identifier: str) -> None:
+    from pymobiledevice3.pair_records import iter_remote_pair_records_by_identifier
+
+    for found, path, _record in iter_remote_pair_records_by_identifier():
+        if found == identifier:
+            path.chmod(0o600)
+
+
+def failure_reason(stderr: str) -> str:
+    lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+    return lines[-1][:300] if lines else "no details reported"
 
 
 async def find_usb_identifier(requested: str | None = None) -> str:
@@ -45,10 +61,17 @@ def bootstrap_remote_pairing(identifier: str) -> None:
         "--udid",
         identifier,
     ]
-    completed = subprocess.run(command, check=False, text=True, capture_output=True)
+    try:
+        completed = subprocess.run(command, check=False, text=True, capture_output=True, timeout=PAIRING_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise SetupError(
+            f"USB RemotePairing timed out after {PAIRING_TIMEOUT}s. Unlock the device, accept Trust if prompted, and retry."
+        ) from None
     if completed.returncode:
         raise SetupError(
-            "USB RemotePairing failed. Unlock the device, accept Trust if prompted, and retry."
+            "USB RemotePairing failed. Unlock the device, accept Trust if prompted, and retry. "
+            f"Reason: {failure_reason(completed.stderr)}"
         )
     if not has_pair_record(identifier):
         raise SetupError("pymobiledevice3 completed but did not create a RemotePairing record")
+    protect_pair_record(identifier)
