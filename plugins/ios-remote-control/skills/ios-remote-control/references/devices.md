@@ -7,7 +7,7 @@ Read this before trying to connect a device. Do not experiment with pairing: it 
 | Device | Minimum system | Status |
 | --- | --- | --- |
 | iPad | iPadOS 17 | **Tested in full** on iPadOS 17.7.11: screenshots, touch in all four orientations, app launch, Home, and control over Tailscale. |
-| iPhone | iOS 17 | **Partly tested** on iOS 27.2: `setup`, `info`, screenshots, and `export`/`import` over Wi-Fi. Touch and Tailscale are not tested. |
+| iPhone | iOS 17 | **Tested** on iOS 27.2: `setup`, `info`, screenshots, app launch, tap, Home, and `export`/`import`, from another country over Tailscale. Tested on a locked device only. Swipes and an unlocked device are not tested. |
 | iPhone or iPad on iOS 16 or earlier | | **Not supported.** This tool needs CoreDevice, which starts at iOS 17. |
 | Apple Watch, Apple TV, Apple Vision Pro | | **Not supported or tested.** They can pair with a Mac, as below, but this tool has not been made to work with them. |
 
@@ -92,9 +92,15 @@ So the order is:
 | Situation | Why |
 | --- | --- |
 | First pairing | iOS requires it to be confirmed at the device |
-| Locked screen | This tool does not enter a passcode. `info` reports `passcode_required`. |
+| Unlocking the device | This tool does not enter a passcode. `info` reports `passcode_required`. Some commands work while locked: see the command reference. |
 | Touch ID or Face ID prompt | Touch input cannot satisfy it |
 | Tailscale stopped on the device, or the device restarted | The device has no route until Tailscale runs again |
+
+## Security: a pairing works on a locked device
+
+Whoever holds a pairing record can read the device's state and take screenshots while it is locked. They can also open an app over the lock screen and use it by touch, which can expose that app's data. In our test, this worked on Clock on iOS 27.2. Other apps have not been tried.
+
+Treat the pairing record and `export` files like a key to the device. Turning off Developer Mode stops these services, according to Apple's description of what it protects, but we have not tested this.
 
 ## What was tried and refused
 

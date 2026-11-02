@@ -56,7 +56,7 @@ ios-remote info --device ALIAS
 | `orientation` | `portrait`, `portraitUpsideDown`, `landscapeLeft`, or `landscapeRight` |
 | `rotation` | Interface rotation in degrees: 0, 90, 180, or 270 |
 | `backlight` | Display state. `activeOn` means on and `off` means off. |
-| `passcode_required` | `true` means the screen is locked, so a person must unlock it |
+| `passcode_required` | `true` means the device is locked. Commands still run: see "On a locked device" below. |
 | `alias`, `host`, `port` | The saved settings used for this connection |
 | `identifier`, `product`, `os` | Device identifier, model, and OS version |
 
@@ -144,6 +144,20 @@ ios-remote home --device ALIAS
 | `--device` | Yes | Saved device alias |
 
 Prints `{"status": "pressed", "button": "home"}`. If Spotlight is open, this may not close it. A swipe on the screen does. Tested on an iPad with a Home button, but not on a device without one.
+
+## On a locked device
+
+Tested on an iPhone with iOS 27.2 from another country over a relayed Tailscale path. The tool cannot unlock a device, and it does not enter a passcode. Everything else still reaches it:
+
+| Command | Screen off | Screen on |
+| --- | --- | --- |
+| `info`, `doctor` | Work | Work |
+| `screenshot` | Works, but the image is black | Shows the screen |
+| `launch` | Reports success. The app appears when the screen next wakes. | Opens the app over the lock screen |
+| `tap`, `swipe` | Delivered, with no visible effect | **Work inside an app opened over the lock screen** |
+| `home` | Wakes the screen | Can show the passcode screen, or turn the screen black |
+
+**Opening an app this way can show its data while the device is locked.** In our test, Clock's alarms were visible and its tabs responded. Other apps have not been tried. Never use this to get into a user's private apps unless they ask for that exact thing, and never tap digits on a passcode screen.
 
 ## Set up a device
 

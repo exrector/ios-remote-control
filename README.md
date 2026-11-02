@@ -40,7 +40,7 @@ Apple's normal tooling discovers devices on the local network with Bonjour. That
 | --- | --- | --- |
 | First pairing by cable, then `setup` and control over Tailscale | iPad, iPadOS 17.7.11 | Works |
 | `setup` over Wi-Fi with no cable, on a device already paired with the Mac | iPhone, iOS 27.2 | Works |
-| `info` and screenshots on a locked screen, on the same Wi-Fi | iPhone, iOS 27.2 | Works |
+| `info`, screenshots, app launch, tap, and Home on a locked device, from another country over a relayed Tailscale path | iPhone, iOS 27.2 | Work: an app opens over the lock screen and responds to touch |
 | Screenshots, app launch, tap, swipe, and Home over a direct Tailscale path | iPad, iPadOS 17.7.11 | Works, 2–3 seconds per command |
 | Tap, swipe, Home, and screenshots from another country over a relayed Tailscale path (DERP), after `export` and `import` | iPad, iPadOS 17.7.11 | Works: 8–17 seconds per command |
 | Touch input in all four orientations | iPad, iPadOS 17.7.11 | Correct |
@@ -48,7 +48,7 @@ Apple's normal tooling discovers devices on the local network with Bonjour. That
 | Pairing a new computer through `lockdownd` over Tailscale or Wi-Fi, with no existing trust | iPad, iPadOS 17.7.11 | Refused by iOS: it withholds the key that pairing needs |
 | Finding a device in Xcode tools after removing it from Xcode, with no cable | iPad, iPadOS 17.7.11 | Not found |
 
-Not verified yet: an iPhone over Tailscale, touch input on iPhones, and first pairing without a cable.
+Not verified yet: an unlocked iPhone over a relayed path, swipes on iPhones, and first pairing without a cable.
 
 ## Requirements
 
@@ -165,7 +165,7 @@ For reliable automation, always use an observe-act-verify loop:
 The device can be controlled unattended only while it is paired, online, and unlocked. Someone has to be with it to:
 
 - establish the first trust between the computer and the device;
-- unlock it, because this tool does not enter a passcode;
+- unlock it, because this tool does not enter a passcode. Other commands still work while it is locked, and an app can open over the lock screen and show its data, so treat a pairing like a key to the device;
 - answer Touch ID or Face ID prompts, which touch input cannot satisfy;
 - bring it back after a reboot or when Tailscale has stopped running on it.
 
