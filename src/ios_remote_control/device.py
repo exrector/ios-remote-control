@@ -75,6 +75,9 @@ class RemoteDevice:
             )
 
         service = RemotePairingManualPairingService(self.device.identifier, self.device.host, self.device.port)
+        if self.device.host_id:
+            # A pairing belongs to the identity it was made with, not to the current hostname.
+            service.identifier = self.device.host_id
         try:
             previous_timeout = tunnel_service.TIMEOUT
             tunnel_service.TIMEOUT = CONNECT_TIMEOUT
@@ -84,7 +87,9 @@ class RemoteDevice:
                 tunnel_service.TIMEOUT = previous_timeout
             if not hasattr(service, "client_cip"):
                 raise PairingRequiredError(
-                    "the RemotePairing record was rejected; reconnect over USB and run `ios-remote pair-usb`"
+                    "the RemotePairing record was rejected; if this computer's name changed or the record came from "
+                    "another computer, set its identity with `ios-remote add --host-id`; otherwise reconnect over USB "
+                    "and run `ios-remote pair-usb`"
                 )
 
             previous_use_userspace = tunnel_service.USE_USERSPACE_TUNNEL

@@ -11,6 +11,7 @@ import contextlib
 import io
 import subprocess
 
+import ios_remote_control
 from ios_remote_control import cli
 from ios_remote_control.config import Device, load_devices, save_devices
 from ios_remote_control.device import RemoteDevice, pixel_to_hid, png_dimensions, rotation_degrees, screen_to_hid
@@ -128,9 +129,89 @@ class CliTests(unittest.TestCase):
         self.assertIn("unknown device", json.loads(output.getvalue())["error"])
 
     def test_add_rejects_invalid_port(self):
-        arguments = argparse.Namespace(name="tablet", host="host", identifier="id", port=70000)
+        arguments = argparse.Namespace(name="tablet", host="host", identifier="id", port=70000, host_id=None)
         with self.assertRaisesRegex(ValueError, "port"):
             cli.add_device(arguments)
+
+    def run_add(self, host_id):
+        arguments = argparse.Namespace(name="tablet", host="host", identifier="id", port=49152, host_id=host_id)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "devices.json"
+            with patch.dict("os.environ", {"IOS_REMOTE_CONFIG": str(path)}), \
+                 patch.object(cli, "current_host_id", return_value="THIS-COMPUTER"), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                cli.add_device(arguments)
+            return load_devices(path)["tablet"].host_id
+
+    def test_add_pins_the_current_identity_by_default(self):
+        self.assertEqual(self.run_add(None), "THIS-COMPUTER")
+
+    def test_add_accepts_an_explicit_identity(self):
+        self.assertEqual(self.run_add("OTHER-COMPUTER"), "OTHER-COMPUTER")
+
+
+class HostIdentityTests(unittest.TestCase):
+    def identity_used(self, device):
+        class Stop(Exception):
+            pass
+
+        created = []
+
+        class FakeService:
+            def __init__(self, *_args):
+                self.identifier = "FROM-HOSTNAME"
+                created.append(self)
+
+            async def connect(self, autopair):
+                raise Stop
+
+            async def close(self):
+                pass
+
+        async def attempt():
+            async with RemoteDevice(device).rsd():
+                pass
+
+        with patch("ios_remote_control.device.has_pair_record", return_value=True), \
+             patch("pymobiledevice3.remote.tunnel_service.RemotePairingManualPairingService", FakeService):
+            with self.assertRaises(Stop):
+                asyncio.run(attempt())
+        return created[0].identifier
+
+    def test_saved_identity_survives_a_hostname_change(self):
+        device = Device("tablet", "host", "id", 49152, "SAVED-IDENTITY")
+        self.assertEqual(self.identity_used(device), "SAVED-IDENTITY")
+
+    def test_older_aliases_keep_the_hostname_identity(self):
+        self.assertEqual(self.identity_used(Device("tablet", "host", "id")), "FROM-HOSTNAME")
+
+
+class PackagingTests(unittest.TestCase):
+    root = Path(__file__).resolve().parent.parent
+    plugin = "plugins/ios-remote-control"
+
+    def manifest(self, relative):
+        return json.loads((self.root / relative).read_text(encoding="utf-8"))
+
+    def test_versions_match_across_packages(self):
+        expected = ios_remote_control.__version__
+        self.assertEqual(self.manifest(f"{self.plugin}/.claude-plugin/plugin.json")["version"], expected)
+        self.assertEqual(self.manifest(f"{self.plugin}/.codex-plugin/plugin.json")["version"], expected)
+        self.assertIn(f'version = "{expected}"', (self.root / "pyproject.toml").read_text(encoding="utf-8"))
+
+    def test_both_plugins_ship_the_skill(self):
+        self.assertTrue((self.root / self.plugin / "skills/ios-remote-control/SKILL.md").is_file())
+        self.assertEqual(self.manifest(f"{self.plugin}/.codex-plugin/plugin.json")["skills"], "./skills/")
+
+    def test_codex_icons_exist(self):
+        interface = self.manifest(f"{self.plugin}/.codex-plugin/plugin.json")["interface"]
+        for key in ("composerIcon", "logo"):
+            self.assertTrue((self.root / self.plugin / interface[key]).is_file(), key)
+
+    def test_marketplaces_list_the_plugin(self):
+        for relative in (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json"):
+            names = [entry["name"] for entry in self.manifest(relative)["plugins"]]
+            self.assertEqual(names, ["ios-remote-control"], relative)
 
 
 class ConfigTests(unittest.TestCase):
@@ -143,6 +224,7 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             payload = json.loads(path.read_text())
             self.assertNotIn("name", payload["devices"]["tablet"])
+            self.assertNotIn("host_id", payload["devices"]["tablet"])
 
 
 class BootstrapTests(unittest.TestCase):

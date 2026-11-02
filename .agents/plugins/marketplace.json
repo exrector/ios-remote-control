@@ -1,0 +1,20 @@
+{
+  "name": "ios-remote-control",
+  "interface": {
+    "displayName": "iOS Remote Control"
+  },
+  "plugins": [
+    {
+      "name": "ios-remote-control",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ios-remote-control"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
