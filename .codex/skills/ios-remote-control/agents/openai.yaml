@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS Remote Control"
+  short_description: "Control a paired iPhone or iPad over IP"
+  default_prompt: "Use $ios-remote-control to inspect and operate my paired iOS device."

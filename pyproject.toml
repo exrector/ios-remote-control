@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ios-remote-control"
+version = "0.1.0"
+description = "Control a paired physical iPhone or iPad over any routable IP connection"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "exrector" }]
+keywords = ["ios", "ipad", "iphone", "tailscale", "automation", "codex"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = ["pymobiledevice3>=11.49.2,<12"]
+
+[project.scripts]
+ios-remote = "ios_remote_control.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/exrector/ios-remote-control"
+Issues = "https://github.com/exrector/ios-remote-control/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ios_remote_control"]
