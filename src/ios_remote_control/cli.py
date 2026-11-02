@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
 from .config import Device, load_devices, save_devices
-from .device import RemoteDevice, run
+from .device import PairingRequiredError, RemoteDevice, run
+from .onboarding import SetupError, bootstrap_remote_pairing, find_usb_identifier, paired_identifiers
 
 
 def emit(payload: dict[str, Any]) -> None:
@@ -50,18 +49,57 @@ def list_devices(_: argparse.Namespace) -> None:
 
 
 def list_pairs(_: argparse.Namespace) -> None:
-    from pymobiledevice3.pair_records import iter_remote_pair_records_by_identifier
-
-    emit({"identifiers": [identifier for identifier, _path, _record in iter_remote_pair_records_by_identifier()]})
+    emit({"identifiers": paired_identifiers()})
 
 
 def pair_usb(args: argparse.Namespace) -> None:
-    command = [sys.executable, "-m", "pymobiledevice3", "lockdown", "remotepairing", "--pair"]
-    if args.udid:
-        command.extend(["--udid", args.udid])
-    completed = subprocess.run(command, check=False)
-    if completed.returncode:
-        raise SystemExit(completed.returncode)
+    identifier = run(find_usb_identifier(args.udid))
+    bootstrap_remote_pairing(identifier)
+    emit({"status": "paired", "identifier": identifier})
+
+
+def setup(args: argparse.Namespace) -> None:
+    identifier = run(find_usb_identifier(args.udid))
+    bootstrap_remote_pairing(identifier)
+    devices = load_devices()
+    device = Device(args.name, args.host, identifier, args.port)
+    devices[args.name] = device
+    save_devices(devices)
+    result: dict[str, Any] = {
+        "status": "configured",
+        "device": args.name,
+        "host": args.host,
+        "port": args.port,
+        "identifier": identifier,
+    }
+    if not args.skip_verify:
+        result["connection"] = run(RemoteDevice(device).info())
+    emit(result)
+
+
+def doctor(args: argparse.Namespace) -> None:
+    device = selected_device(args.device)
+    paired = device.identifier in paired_identifiers()
+    result: dict[str, Any] = {
+        "device": device.name,
+        "configured": True,
+        "paired": paired,
+        "host": device.host,
+        "port": device.port,
+    }
+    if not paired:
+        result["status"] = "needs_usb_pairing"
+        result["next"] = f"ios-remote setup {device.name} --host {device.host}"
+        emit(result)
+        return
+    try:
+        result["connection"] = run(RemoteDevice(device).info())
+        result["status"] = "ready"
+    except Exception as error:
+        result["status"] = "unreachable"
+        result["error_type"] = type(error).__name__
+        result["error"] = str(error) or "connection failed"
+    emit(result)
 
 
 def info(args: argparse.Namespace) -> None:
@@ -109,6 +147,16 @@ def parser() -> argparse.ArgumentParser:
     pair.add_argument("--udid")
     pair.set_defaults(handler=pair_usb)
 
+    setup_command = commands.add_parser(
+        "setup", help="pair one USB device, save its remote host, and verify the complete connection"
+    )
+    setup_command.add_argument("name", help="local alias for the device")
+    setup_command.add_argument("--host", required=True, help="Tailscale name, IP address, or other routable host")
+    setup_command.add_argument("--port", type=int, default=49152)
+    setup_command.add_argument("--udid", help="required only when multiple USB devices are connected")
+    setup_command.add_argument("--skip-verify", action="store_true")
+    setup_command.set_defaults(handler=setup)
+
     pairs = commands.add_parser("list-pairs", help="list locally stored RemotePairing identifiers")
     pairs.set_defaults(handler=list_pairs)
 
@@ -125,6 +173,10 @@ def parser() -> argparse.ArgumentParser:
     remove = commands.add_parser("remove", help="remove a device alias; pairing records are left untouched")
     remove.add_argument("name")
     remove.set_defaults(handler=remove_device)
+
+    doctor_command = commands.add_parser("doctor", help="check configuration, pairing, and connectivity")
+    doctor_command.add_argument("--device", required=True, help="saved device alias")
+    doctor_command.set_defaults(handler=doctor)
 
     for command_name, handler, help_text in [
         ("info", info, "show device information"),
@@ -160,8 +212,15 @@ def main() -> None:
         args.handler(args)
     except KeyboardInterrupt:
         raise SystemExit(130) from None
-    except (ConnectionError, OSError, TimeoutError, ValueError) as error:
+    except (ConnectionError, OSError, PairingRequiredError, SetupError, TimeoutError, ValueError) as error:
         emit({"status": "error", "error": str(error), "type": type(error).__name__})
+        raise SystemExit(1) from error
+    except Exception as error:
+        from pymobiledevice3.exceptions import PyMobileDevice3Exception
+
+        if not isinstance(error, PyMobileDevice3Exception):
+            raise
+        emit({"status": "error", "error": str(error) or "device operation failed", "type": type(error).__name__})
         raise SystemExit(1) from error
 
 

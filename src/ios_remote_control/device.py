@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import AsyncIterator, Any
 
 from .config import Device
+from .onboarding import has_pair_record
+
+
+class PairingRequiredError(RuntimeError):
+    pass
 
 
 def png_dimensions(data: bytes) -> tuple[int, int]:
@@ -29,24 +34,24 @@ class RemoteDevice:
 
     @asynccontextmanager
     async def rsd(self) -> AsyncIterator[Any]:
-        from pymobiledevice3.exceptions import RemotePairingCompletedError
         from pymobiledevice3.remote import tunnel_service, userspace_tunnel
         from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
         from pymobiledevice3.remote.tunnel_service import RemotePairingManualPairingService
         from pymobiledevice3.remote.userspace_tunnel import UserspaceDialPlane
 
-        service = RemotePairingManualPairingService(
-            self.device.identifier, self.device.host, self.device.port
-        )
+        if not has_pair_record(self.device.identifier):
+            raise PairingRequiredError(
+                "no local RemotePairing record; connect the unlocked device over USB and run "
+                f"`ios-remote setup {self.device.name} --host {self.device.host}`"
+            )
+
+        service = RemotePairingManualPairingService(self.device.identifier, self.device.host, self.device.port)
         try:
-            try:
-                await service.connect()
-            except RemotePairingCompletedError:
-                await service.close()
-                service = RemotePairingManualPairingService(
-                    self.device.identifier, self.device.host, self.device.port
+            await service.connect(autopair=False)
+            if not hasattr(service, "client_cip"):
+                raise PairingRequiredError(
+                    "the RemotePairing record was rejected; reconnect over USB and run `ios-remote pair-usb`"
                 )
-                await service.connect(autopair=False)
 
             previous_use_userspace = tunnel_service.USE_USERSPACE_TUNNEL
             tunnel_service.USE_USERSPACE_TUNNEL = True

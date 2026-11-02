@@ -14,7 +14,7 @@ Verified on a physical iPad 6th generation running iPadOS 17.7.11 through Tailsc
 
 - Python 3.11 or newer
 - An iPhone or iPad supported by `pymobiledevice3`
-- One initial trusted USB connection for RemotePairing bootstrap
+- One initial USB connection to establish trust and bootstrap RemotePairing
 - A route from the computer to the device, such as both devices joining the same Tailnet
 - The RemotePairing TCP port reachable on the device; the usual advertised port is `49152`, but it is configurable
 
@@ -28,25 +28,27 @@ python3 -m pip install .
 
 For an isolated installation, use `pipx install .` or `uv tool install .`.
 
-## Pair once over USB
+Developer Mode is required for CoreDevice services, but it does **not** authorize a new computer by itself. An unpaired client can reach the RemotePairing port, but iOS rejects the setup until trust has been established through an Apple-supported pairing path. The universal path for iOS 17+ is one initial USB connection.
+
+## Set up once over USB
 
 Connect and unlock the device, tap **Trust** if iOS asks, then run:
 
 ```sh
-ios-remote pair-usb
-ios-remote list-pairs
+ios-remote setup home-ipad --host ipad.example-tailnet.ts.net
 ```
 
-`pair-usb` uses the trusted USB connection to create the RemotePairing record required by later IP connections. Pairing records contain credentials and stay in pymobiledevice3's local data directory. Never copy them into this repository or send them to an agent.
+`setup` finds the single USB-connected device, performs the promptless RemotePairing bootstrap over the already trusted lockdown connection, stores the remote host, and verifies the complete IP path. If the computer has never trusted this device, iOS first shows its normal **Trust This Computer?** prompt. With multiple USB devices attached, add `--udid DEVICE_IDENTIFIER`.
 
-Save a local alias using the identifier shown by `list-pairs`:
+For manual or diagnostic use, the underlying steps remain available:
 
 ```sh
-ios-remote add home-ipad \
-  --host ipad.example-tailnet.ts.net \
-  --identifier DEVICE_IDENTIFIER \
-  --port 49152
+ios-remote pair-usb
+ios-remote list-pairs
+ios-remote add home-ipad --host ipad.example-tailnet.ts.net --identifier DEVICE_IDENTIFIER
 ```
+
+Pairing records contain credentials and stay in pymobiledevice3's local data directory. Never copy them into this repository or send them to an agent.
 
 The alias file is stored at `~/.config/ios-remote-control/devices.json` with mode `0600`. Set `IOS_REMOTE_CONFIG` to use a different path.
 
@@ -54,6 +56,7 @@ The alias file is stored at `~/.config/ios-remote-control/devices.json` with mod
 
 ```sh
 ios-remote info --device home-ipad
+ios-remote doctor --device home-ipad
 ios-remote screenshot --device home-ipad screen.png
 ios-remote launch --device home-ipad com.apple.Home
 ios-remote tap --device home-ipad 768 1712
@@ -83,7 +86,7 @@ This first release deliberately stays small:
 - application launch by bundle identifier;
 - single-finger tap and swipe.
 
-It does not provide unattended first-time pairing, bypass the lock screen, expose the device publicly, or relay traffic through a hosted service.
+It does not provide unattended first-time trust, bypass the lock screen, expose the device publicly, or relay traffic through a hosted service. This is intentional: Developer Mode enables developer services but must not silently grant a new computer control of the device.
 
 ## Security
 
